@@ -1,438 +1,55 @@
-# ==========================================================================
-# GHOST RACER — Database Structure for storing FastF1 API data
-# Task: "Create the Structure for the DB to store data from the api"
-# ==========================================================================
-# Uses SQLite — no server setup needed, works as a single file, perfect
-# for this project's scale. This creates the DB schema AND loads sample
-# data from the fastf1 API into it, so you can show a working example.
-# ==========================================================================
+"""
+Services/database.py — kept for backwards compatibility.
 
+All database code now lives in Services/dbhandler.py (DBhandler). These
+functions just forward to it, so existing imports such as
+    from Services.database import DB_PATH, create_schema, load_session_into_db
+keep working. New code should use DBhandler directly.
+"""
 
-# %% [1] IMPORTS ------------------------------------------------------------
-import sqlite3
-import fastf1
-import pandas as pd
-import os
 from fastf1.events import Session
 
-os.makedirs("f1_cache", exist_ok=True)
-fastf1.Cache.enable_cache("f1_cache")
-
-# TODO: Find a permanent location to store the database on the local machine
-DB_PATH = "f1_data.db"
-
-# TODO: rework the dbHandler function
-
-def _to_int(value):
-    """NaN / None -> None, otherwise a plain int (sqlite can't store numpy ints)"""
-    return None if pd.isna(value) else int(value)
+from Services.dbhandler import (  # noqa: F401  (re-exported for old imports)
+    DB_PATH,
+    DBhandler,
+    _to_float,
+    _to_int,
+    _to_text,
+    calculateTotalSessionTime,
+)
 
 
-def _to_float(value):
-    return None if pd.isna(value) else float(value)
-
-
-def _to_text(value):
-    """NaN / None / "" -> None, otherwise a string"""
-    return None if pd.isna(value) or str(value).strip() == "" else str(value)
-
-def calculateTotalSessionTime(session: Session) -> float:
-        """ Time | pd.Timedelta | The drivers total race time 
-        (values only given if session is ‘Race’, ‘Sprint’, ‘Sprint Shootout’ or 
-        ‘Sprint Qualifying’ >and the driver was not more than one lap behind 
-        the leader
-
-        Args:
-            session_id (int): _description_
-
-        Returns:
-            float: _description_
-        """
-        # can I just pass the memory location so I don't have to load it again
-        # this makes a new DF
-        newSessionStatus = session.session_status
-        print(newSessionStatus)
-        # this is when the start flag is raised so when drivers start racing 
-        # NOTE: This will need to be sent to trackStatus and PlayControls VMs to insure proper alignment
-        # NOTE: will need to handle an error that comes up when status doesn't have a 'Ends' signal 
-        dataStreamStart = (newSessionStatus.loc[newSessionStatus["Status"] == "Inactive", "Time"]).iloc[0].total_seconds()
-        dataStreamEnd = (newSessionStatus.loc[newSessionStatus["Status"] == "Ends", "Time"]).iloc[0].total_seconds()
-        sessionStartTime = (newSessionStatus.loc[newSessionStatus["Status"] == "Started", "Time"]).iloc[0].total_seconds()
-        # this is when the positions are finalized I believe this is the last person to come in
-        # NOTE: this will need to be sent to playcontrols VM
-        sessionEndTime = (newSessionStatus.loc[newSessionStatus["Status"] == "Finalised", "Time"]).iloc[0].total_seconds()
-        totalSessionTime = sessionEndTime - sessionStartTime
-        totalDataStreamTime = dataStreamEnd - dataStreamStart
-        totalTimePerDriver = session.laps.groupby("Driver")["LapTime"].sum()
-        maxTime = totalTimePerDriver.max()
-        raceDurationByLapTimes = maxTime.total_seconds()
-
-        print(f"{session.name} total data stream time = {totalDataStreamTime}")
-        print(f"{session.name} total race time according to session time = {totalSessionTime}")
-        print(f"{session.name} total race time according to lap times = {raceDurationByLapTimes}")
-        return(totalDataStreamTime)
-
-# %% [2] CREATE THE DATABASE SCHEMA ------------------------------------------
 def create_schema(db_path: str = DB_PATH) -> None:
-    """Defines the database
-
-    Args:
-        db_path (str, optional): The file path for the database. Defaults to DB_PATH.
-    """
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-
-    """
-        SCHEMA:
-        _____________________________________________________________________________________
-        |                                   sessions                                        |
-        _____________________________________________________________________________________
-        |session_id| year |    event_name    |    session_type   | total_laps|  total_time  |
-        _____________________________________________________________________________________
-        |   1      | 2026 | japan grand prix |                   |     57    |  10000.52    | example data
-        _____________________________________________________________________________________
-    
-        NOTE: 
-            - need to determine how to store total_time (is text better in this instance then convert in the playcontrols vm)
-            - total_time won't be loaded on db creation it will be loaded on playControls.__init__() so make it 0.00 on load
-    """
-    # Sessions table — one row per race/session loaded
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS sessions (
-        session_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        year INTEGER NOT NULL,
-        event_name TEXT NOT NULL,
-        session_type TEXT NOT NULL,
-        total_laps INTEGER,
-        total_time FLOAT NOT NULL,
-        UNIQUE(year, event_name, session_type)
-    )
-    """)
-
-    # Laps table — one row per lap, linked to a session
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS laps (
-        lap_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id INTEGER NOT NULL,
-        driver TEXT,
-        team TEXT,
-        lap_number INTEGER,
-        lap_completion_timestamp,
-        lap_time_seconds REAL,
-        compound TEXT,
-        tyre_life INTEGER,
-        track_status TEXT,
-        is_pit_lap INTEGER,
-        position INTEGER,
-        FOREIGN KEY (session_id) REFERENCES sessions(session_id)
-    )
-    """)
-
-    # Drivers table — one row per driver, per session (a driver's team/
-    # number can change across a season, so we key on (session_id,
-    # driver_code) rather than one global driver_code).
-    # driver_code = FastF1's 3-letter code (e.g. "VER") — this is the
-    # SAME value already stored in laps.driver, so it works as a join
-    # key without changing the laps table.
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS drivers (
-        session_id INTEGER NOT NULL,
-        driver_code TEXT NOT NULL,
-        full_name TEXT,
-        team TEXT,
-        number INTEGER,
-        color TEXT,
-        PRIMARY KEY (session_id, driver_code),
-        FOREIGN KEY (session_id) REFERENCES sessions(session_id)
-    )
-    """)
-
-    # Weather table — one row per weather sample, linked to a session
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS weather (
-        weather_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id INTEGER NOT NULL,
-        air_temp REAL,
-        track_temp REAL,
-        humidity REAL,
-        rainfall INTEGER,
-        sample_time TEXT,
-        FOREIGN KEY (session_id) REFERENCES sessions(session_id)
-    )
-    """)
-
-    """
-    SCHEMA:
-    _________________________________________________________________
-    |                            track status table        |        |
-    _________________________________________________________________
-    |entry_id| session_id |time | track_safety_status      | message|
-    _________________________________________________________________
-    |   0    |     1      | 000 |              0           | normal |example data
-    _________________________________________________________________
-
-    NOTE: This table tracks each time the status has been changed not on a time basis.
-          It doesn't update every {number} seconds like other tables. 
-
-    track status codes as defined by Fastf1 api:
-        '1': Track clear (beginning of session or to indicate the end
-           of another status)
-        - '2': Yellow flag (sectors are unknown)
-        - '3': ??? Never seen so far, does not exist?
-        - '4': Safety Car
-        - '5': Red Flag
-        - '6': Virtual Safety Car deployed
-        - '7': Virtual Safety Car ending (As indicated on the drivers steering wheel, on tv and so on; status '1'
-          will mark the actual end)
-    """
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS trackStatus (
-        entry_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id INTEGER NOT NULL, 
-        time REAL NOT NULL,
-        track_safety_status INTEGER NOT NULL, 
-        message TEXT NOT NULL,
-        FOREIGN KEY (session_id) REFERENCES sessions(session_id)
-    )
-    """)
-
-    # Results table — the official race result, one row per driver per session.
-    # Feeds the "placement over time" graph (#44) and race outcome prediction (#42).
-    # grid_position 0 = started from the pit lane.
-    # finish_position = where they crossed the line (every driver gets one);
-    # classified_position = the official result: a number, or "R" retired,
-    # "D" disqualified, etc. status = "Finished", "Lapped", "Retired", ...
-    # ? NOTE: Do we want to add a column totalRace Time 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS results (
-        session_id INTEGER NOT NULL,
-        driver_code TEXT NOT NULL,
-        grid_position INTEGER,
-        finish_position INTEGER,
-        classified_position TEXT,
-        points REAL,
-        status TEXT,
-        PRIMARY KEY (session_id, driver_code),
-        FOREIGN KEY (session_id) REFERENCES sessions(session_id)
-    )
-    """)
-
-    # Databases made before this change have a laps table without the
-    # position column — add it so old f1_data.db files keep working.
-    lap_columns = [row[1] for row in cur.execute("PRAGMA table_info(laps)")]
-    if "position" not in lap_columns:
-        cur.execute("ALTER TABLE laps ADD COLUMN position INTEGER")
-
-    conn.commit()
-    conn.close()
-    print(f"Schema created at {db_path}")
+    """Create any missing tables/columns. Same as DBhandler(db_path)."""
+    DBhandler(db_path).close()
 
 
-# %% [3] LOAD DATA FROM FASTF1 API INTO THE DB -------------------------------
 def load_session_into_db(session: Session, db_path: str = DB_PATH) -> None:
-    """Provided a session, will insert the session data into the database
-
-    Args:
-        session (Session): A session object from the fastf1 API.
-        db_path (str, optional): The file path for the database. Defaults to DB_PATH.
-    """
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-
-    # this creates a property called by session.track_status also
-    session.load()
-
-    laps = session.laps.copy()
-    weather = session.weather_data.copy()
-    results = session.results.copy()  # has driver code, name, team, number, color
-    total_laps = int(laps["LapNumber"].max())
-    year = session.date.year
-    event = session.event.EventName
-    # copy data from session.track_status
-    trackStatusDF = session.track_status.copy()
-    # ? Session5 is the race event. Do we care about practices and qualifiers? If so, we need to handle that.
-    # - yes because we could add a graph to show starting position diffentials vs where drivers started at the beginning of practices
-    session_type = session.event.Session5
-    session_time = calculateTotalSessionTime(session)
-    # Insert into sessions table (or get existing session_id if already loaded)
-    cur.execute(
-        """
-        INSERT OR IGNORE INTO sessions (year, event_name, session_type, total_laps, total_time)
-        VALUES (?, ?, ?, ?, ?)
-    """,
-        (year, event, session_type, total_laps, session_time),
-    )
-    conn.commit()
-
-    cur.execute(
-        """
-        SELECT session_id FROM sessions
-        WHERE year=? AND event_name=? AND session_type=?
-    """,
-        (year, event, session_type),
-    )
-    session_id = cur.fetchone()[0]
-
-    # Reloading a race used to insert its laps/weather/trackStatus rows a
-    # second time (those tables have no unique key). Clear this session's old
-    # rows first so a reload replaces the data instead of duplicating it.
-    for table in ("laps", "weather", "trackStatus", "results"):
-        cur.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id,))
-
-    # Insert drivers
-    for _, row in results.iterrows():
-        cur.execute(
-            """
-            INSERT OR IGNORE INTO drivers (session_id, driver_code, full_name, team, number, color)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """,
-            (
-                session_id,
-                row.get("Abbreviation"),
-                row.get("FullName"),
-                row.get("TeamName"),
-                row.get("DriverNumber"),
-                row.get("TeamColor"),
-            ),
-        )
-    conn.commit()
-
-    # Insert results
-    for _, row in results.iterrows():
-        cur.execute(
-            """
-            INSERT OR REPLACE INTO results (session_id, driver_code, grid_position,
-                finish_position, classified_position, points, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                session_id,
-                row.get("Abbreviation"),
-                _to_int(row.get("GridPosition")),
-                _to_int(row.get("Position")),
-                _to_text(row.get("ClassifiedPosition")),
-                _to_float(row.get("Points")),
-                _to_text(row.get("Status")),
-            ),
-        )
-
-    # Insert laps
-    for _, row in laps.iterrows():
-        lap_time = row["LapTime"].total_seconds() if pd.notna(row["LapTime"]) else None
-        # NOTE: timedelta doesn't provide the data I need remove before commit
-        lap_timedelta_str: str = str(row["LapTime"])
-        is_pit = (
-            1
-            if (pd.notna(row.get("PitInTime")) or pd.notna(row.get("PitOutTime")))
-            else 0
-        )
-        cur.execute(
-            """
-            INSERT INTO laps (session_id, driver, team, lap_number, lap_completion_timestamp, lap_time_seconds,
-                               compound, tyre_life, track_status, is_pit_lap, position)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                session_id,
-                row.get("Driver"),
-                row.get("Team"),
-                row.get("LapNumber"),
-                lap_timedelta_str,
-                lap_time,
-                row.get("Compound"),
-                row.get("TyreLife"),
-                str(row.get("TrackStatus")),
-                is_pit,
-                _to_int(row.get("Position")),  # race position at the end of this lap
-            ),
-        )
-
-    # Insert weather
-    for _, row in weather.iterrows():
-        cur.execute(
-            """
-            INSERT INTO weather (session_id, air_temp, track_temp, humidity, rainfall, sample_time)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """,
-            (
-                session_id,
-                row.get("AirTemp"),
-                row.get("TrackTemp"),
-                row.get("Humidity"),
-                int(bool(row.get("Rainfall"))),
-                str(row.get("Time")),
-            ),
-        )
-
-    # insert track_status
-    for _, row in trackStatusDF.iterrows():
-        """ 
-            Dataframe loaded by session.track_status:
-            {Time: datetime.timedelta, Status: str, Message: str}
-        """
-        timeStampRow = row.get("Time")
-
-        # ! timeStampRow being None needs to be handled elegantly
-        assert timeStampRow is not None
-
-        timeStampInSeconds = timeStampRow.total_seconds()
-
-        statusNumRow = row.get("Status")
-
-        # ! statusNumRow being None needs to be handled elegantly
-        assert statusNumRow is not None
-        
-        statusNumCode = int(statusNumRow)
-        message = str(row.get("Message"))
-
-        cur.execute(
-            """ 
-            INSERT INTO trackStatus (session_id, time, track_safety_status, message)
-            VALUES(?, ?, ?, ?)
-            """,
-            (session_id, timeStampInSeconds, statusNumCode, message),
-        )
-    conn.commit()
-    conn.close()
-    print(
-        f"Loaded {len(results)} drivers, {len(laps)} laps, and {len(weather)} "
-        f"weather samples for {year} {event} {session_type}"
-    )
+    """Insert a FastF1 session into the database. Same as DBhandler.loadSessionIntoDB."""
+    handler = DBhandler(db_path)
+    try:
+        handler.loadSessionIntoDB(session)
+    finally:
+        handler.close()
 
 
-# %% [4] QUICK CHECK — READ DATA BACK OUT ------------------------------------
-def _preview_db(db_path: str = DB_PATH):
-    """Helper function to print out the database
-
-    Args:
-        db_path (str, optional): The file path for the database. Defaults to DB_PATH.
-    """
-    conn = sqlite3.connect(db_path)
-    print("\n--- Sessions ---")
-    print(pd.read_sql("SELECT * FROM sessions", conn))
-    print("\n--- Drivers ---")
-    print(pd.read_sql("SELECT * FROM drivers", conn))
-    print("\n--- Sample laps ---")
-    print(pd.read_sql("SELECT * FROM laps LIMIT 5", conn))
-    print("\n--- Sample weather ---")
-    print(pd.read_sql("SELECT * FROM weather LIMIT 5", conn))
-    print("\n--- Results ---")
-    print(
-        pd.read_sql("SELECT * FROM results ORDER BY session_id, finish_position", conn)
-    )
-    print("\n --- Sample trackStatus ---")
-    print(pd.read_sql("SELECT * FROM trackStatus", conn))
-    conn.close()
+def _preview_db(db_path: str = DB_PATH) -> None:
+    handler = DBhandler(db_path)
+    try:
+        handler.previewDB()
+    finally:
+        handler.close()
 
 
 def _main():
-    create_schema()
-    session = fastf1.get_session(2023, "Bahrain", "R")
-    load_session_into_db(session)
-    _preview_db()
+    import fastf1
+
+    handler = DBhandler()
+    handler.loadSessionIntoDB(fastf1.get_session(2023, "Bahrain", "R"))
+    handler.previewDB()
+    handler.close()
     return 0
 
 
-# %% [5] RUN IT ---------------------------------------------------------------
 if __name__ == "__main__":
     _main()

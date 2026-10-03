@@ -29,7 +29,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 import joblib
 
-from Services.database import DB_PATH
+from Services.dbhandler import DB_PATH
 
 
 # %% [1] LOAD DATA FROM THE DATABASE -----------------------------------------

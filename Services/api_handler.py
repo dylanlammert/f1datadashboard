@@ -1,6 +1,6 @@
 # Imports
 import fastf1
-import Services.database as db
+from Services.dbhandler import DBhandler
 import pandas as pd
 from fastf1.events import EventSchedule
 import typing
@@ -30,7 +30,11 @@ def get_race(year: int, event_name: str, type: str = "R") -> None:
         event_name (str): The name of the event
         type (str, optional): What type of race to grab. Types: 'FP1', 'FP2', 'FP3', 'Q', 'R'. Defaults to "R".
     """
-    db.load_session_into_db(fastf1.get_session(year, event_name, type))
+    handler = DBhandler()
+    try:
+        handler.loadSessionIntoDB(fastf1.get_session(year, event_name, type))
+    finally:
+        handler.close()
 
 
 # Helper/Debug Functions
@@ -49,9 +53,10 @@ def _get_event_names(schedule: EventSchedule) -> pd.Series[typing.Any] | None:
 
 
 def _main():
-    db.create_schema()
     get_race(2026, "Japanese Grand Prix", "R")
-    db._preview_db()
+    handler = DBhandler()
+    handler.previewDB()
+    handler.close()
     return 0
 
 

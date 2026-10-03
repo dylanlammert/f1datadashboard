@@ -45,7 +45,7 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 
-from Services.database import DB_PATH
+from Services.dbhandler import DB_PATH
 
 DRY_COMPOUNDS = ("SOFT", "MEDIUM", "HARD")
 GREEN_FLAG = ("1", "['1']")
