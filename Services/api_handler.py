@@ -48,7 +48,6 @@ def _get_event_names(schedule: EventSchedule) -> pd.Series | None:
     """
     return schedule.get("EventName")
 
-
 def _main():
     get_race(2026, "Japanese Grand Prix", "R")
     handler = DBhandler()

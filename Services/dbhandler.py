@@ -386,7 +386,7 @@ class DBhandler:
 
         # this creates a property called by session.track_status also
         session.load()
-
+        
         laps = session.laps.copy()
         weather = session.weather_data.copy()
         results = session.results.copy()  # has driver code, name, team, number, color

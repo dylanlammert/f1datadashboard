@@ -3,6 +3,7 @@ from PySide6.QtCore import Signal, Qt
 from UI.Theme import theme
 from ViewModels.raceSimulationVM import PlayControlsVM
 from ViewModels.trackStatusVM import TrackStatusVM
+from ViewModels.simulationGraphVM import SimulationCanvas
 from Services.dbhandler import DBhandler
 from PySide6.QtWidgets import (
     QGridLayout,
@@ -298,6 +299,8 @@ class DriverSIM(Card):
     """
     def __init__(self, trackStatus: TrackStatusVM, playControlsController: PlayControlsVM):
         super().__init__()
+        self.raceSimCanvas = SimulationCanvas()
+        self.setStyleSheet(f"background-color: {theme.info}")
         # self.setStyleSheet(f"background-color: {theme.info}")
         layout = QVBoxLayout(self)
         # create the track status card that will sit inside of the race sim
@@ -306,7 +309,8 @@ class DriverSIM(Card):
         self.playControlsUI = PlayControlsUI(playControlsController)
         layout.addWidget(self.trackStatusCard)
         # this will hold the simulated race
-        layout.addWidget(QLabel("Race Sim"))
+        layout.addWidget(self.raceSimCanvas)
+        self.raceSimCanvas.drawTrackOutline()
         layout.addWidget(self.playControlsUI)
 
 
