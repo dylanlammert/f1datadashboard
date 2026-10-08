@@ -4,6 +4,7 @@ from UI.Theme import theme
 from ViewModels.raceSimulationVM import PlayControlsVM
 from ViewModels.trackStatusVM import TrackStatusVM
 from ViewModels.simulationGraphVM import SimulationCanvas
+from ViewModels.sessionSelectorVM import SessionSelectorVM
 from Services.dbhandler import DBhandler
 from PySide6.QtWidgets import (
     QGridLayout,
@@ -28,7 +29,7 @@ borderRadius: int= 20
     - move the scrubber to its own class
     - might make a vm for the scrubber 
     - flags to show visually on scrubber (race start, trackstatus changes, finish flag)
-    - comment out print debug statements
+    - fix track clipping when user makes window smaller
 """
 
 
@@ -65,7 +66,9 @@ class TrackStatusCard(Card):
         super().__init__()
         self.statusStyles: dict = {"AllClear": theme.success, "Yellow": theme.warning, "Red" : theme.danger, "VSCDeployed" : theme.safety}
         #self.setStyleSheet(f"""background-color: {theme.background}""")
-        self.setMaximumHeight(50)
+        self.setStyleSheet(f"background-color: none")
+        self.setFixedHeight(50)
+        self.setMaximumWidth(140)
         # share the mem location of the initialized VM
         self.trackStatusVM = trackStatusVM
         # stub info while waiting for race to load
@@ -121,6 +124,7 @@ class PlayControlsUI(Card):
         # ? I had to change this to Qt.Orientation.Horizontal to get it to compile for some reason. Apparently it's a newer change with PySide6?
         # create the slider NOTE: might want to make this it's own class later on
         self.scrubSlider = QSlider(Qt.Orientation.Horizontal)
+        self.scrubSlider.setMinimumHeight(40)
         self.scrubSlider.setRange(0, 100)  # will be rescaled once duration is known
         self.durationLabel = QLabel(self.formattedTime)
         # set the signal changes
@@ -259,11 +263,12 @@ class HomePage(QWidget):
     """_Home page UI layout, instantiates different UI objects and places them on the homepage widget_
 
     """
-    def __init__(self, trackStatusViewModel: TrackStatusVM, playControlsViewModel):
+    def __init__(self, trackStatusViewModel: TrackStatusVM, playControlsViewModel: PlayControlsVM, sessionSelectorViewModel: SessionSelectorVM ):
         super().__init__()
         # share the mem location of VMs
-        self.monitorTrackStatus = trackStatusViewModel
+        self.trackStatusController = trackStatusViewModel
         self.playControlsController = playControlsViewModel
+        self.sessionSelectorController = sessionSelectorViewModel
         # NOTE: hard coded, in future this should be held within sessionSelectorVM
         self.currentSessionID = 1
         
@@ -275,10 +280,10 @@ class HomePage(QWidget):
         # setting the margins of the grid to a standard size
         gridLayout.setContentsMargins(gridMargin, gridMargin, gridMargin, gridMargin)
         # create the simulation frame
-        driverSimFrame = DriverSIM(trackStatus = self.monitorTrackStatus, playControlsController = self.playControlsController)
+        driverSimFrame = DriverSIM(trackStatus = self.trackStatusController, playControlsController = self.playControlsController)
         gridLayout.addWidget(driverSimFrame, 1,0, 3, 3)
         # create the session selector
-        sessionFrame = SessionSelector()
+        sessionFrame = SessionSelector(sessionSelectorViewModel)
         gridLayout.addWidget(sessionFrame, 0, 0, 1, 3)
         # create the driver placement UI 
         driverStandingsFrame = DriverStandings()
@@ -300,16 +305,23 @@ class DriverSIM(Card):
     def __init__(self, trackStatus: TrackStatusVM, playControlsController: PlayControlsVM):
         super().__init__()
         self.raceSimCanvas = SimulationCanvas()
-        self.setStyleSheet(f"background-color: {theme.info}")
+        self.setStyleSheet(f"""
+            DriverSIM {{
+               background-color: {theme.background}; 
+               border-radius: {borderRadius};
+            }}
+        """)
         # self.setStyleSheet(f"background-color: {theme.info}")
         layout = QVBoxLayout(self)
+        layout.setSpacing(0)
         # create the track status card that will sit inside of the race sim
-        self.trackStatusCard = TrackStatusCard(trackStatus)
         # create the playcontrols that will sit at the bottom row of the race sim
         self.playControlsUI = PlayControlsUI(playControlsController)
-        layout.addWidget(self.trackStatusCard)
         # this will hold the simulated race
         layout.addWidget(self.raceSimCanvas)
+        self.trackStatusCard = TrackStatusCard(trackStatus)
+        self.trackStatusCard.setParent(self)
+        self.trackStatusCard.raise_()
         self.raceSimCanvas.drawTrackOutline()
         layout.addWidget(self.playControlsUI)
 
@@ -341,8 +353,9 @@ class SessionSelector(Card):
     """
     _UI element that creates a few dropdown menus and submit button so the user can change sessions_
     """
-    def __init__(self):
+    def __init__(self, sessionSelectorViewModel):
         super().__init__()
+        self.sessionSelectorViewModel = sessionSelectorViewModel
         self.setMaximumHeight(50)
         # create and add a label for layout purposes
         layout = QHBoxLayout(self)
@@ -353,10 +366,17 @@ class SessionSelector(Card):
         self.yearSelector.setPlaceholderText("Select Year")
         # seesion dropdown menu
         # TODO: on session selected load session into view
+        self.eventSelector = QComboBox()
+        self.eventSelector.setPlaceholderText("Select Event")
+
         self.sessionSelector = QComboBox()
         self.sessionSelector.setPlaceholderText("Select Session")
 
+        self.connectionLabel = QLabel("Online")
+        
+
         layout.addWidget(self.yearSelector)
+        layout.addWidget(self.eventSelector)
         layout.addWidget(self.sessionSelector)
 
 

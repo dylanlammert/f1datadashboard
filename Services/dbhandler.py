@@ -243,7 +243,7 @@ class DBhandler:
             _____________________________________________________________________________________
             |session_id| year |    event_name    |    session_type   | total_laps|  total_time  |
             _____________________________________________________________________________________
-            |   1      | 2026 | japan grand prix |                   |     57    |  10000.52    | example data
+            |   1      | 2026 | japan grand prix |        R           |     57    |  10000.52    | example data
             _____________________________________________________________________________________
     
             NOTE: 
@@ -369,6 +369,39 @@ class DBhandler:
             PRIMARY KEY (session_id, driver_code),
             FOREIGN KEY (session_id) REFERENCES sessions(session_id)
         )
+        """)
+
+        # live telemetry (merged car_telemetry and driver_telemetry) this will reduce the amount of obeservations within the db. 
+        # should help the total file size of the db file
+        """
+            NOTE: what data do we need in the db?
+                - Distance _float_ : distance driven in meters (could be used to estimate tire life)
+                - DriverAhead _str_ : driver number of the driver ahead of car (might not need this, we already have position data from laps)
+                - Distance to Driver ahead _float_ : this could be important to change the rate at which the canvas updates
+                - z_pos _float_: could be important if we want to calculate driver speed and torque, or make a 3d model
+                - drs _int_ : this could help us detect if the driver is slowing down or if the driver is taking a turn or if the user is speeding up
+                - date_timestamp _DATETIME_: this could be used to insure the track canvas is properly is aligned.
+        """
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS live_driver_telemetry (
+            session_id INTEGER NOT NULL,
+            driver_code TEXT NOT NULL,
+            session_time REAL NOT NULL,
+            source_of_data TEXT NOT NULL,
+            status TEXT NOT NULL,
+            x_pos REAL NOT NULL,
+            y_pos REAL NOT NULL,
+            distance_to_driver_ahead FLOAT,
+            gear INTEGER,
+            throttle REAL,
+            brake INTEGER,
+            drs INTEGER,
+            SPEED REAL,
+            rpm REAL,
+            PRIMARY KEY (session_id, driver_code, session_time)
+            )
+
+
         """)
 
         conn.commit()
@@ -775,6 +808,28 @@ class DBhandler:
         # NOTE: might be nice to return a dictionary so that it is easier to read from
         return results
 
+    def getSessionsFromDB(self) -> list[dict]:
+        cursor = self.conn.cursor()
+        attributes = ("session_id", "event_name", "session_type")
+        columns = ", ".join(attributes)
+
+        cursor.row_factory = sqlite3.Row
+        cursor.execute(
+            f"""
+                SELECT {columns} FROM sessions
+            """)
+        sessionTableDict: list[dict] = []
+        # for each row within the list append each to the dict based on their columnNames for keys
+        for row in cursor.fetchall():
+            sessionTableDict.append(dict(row))
+            
+        # procecs the sessionTable and make it a list[dicts]
+        return sessionTableDict
+
+    def __deleteSessionData(self, session_id:int) -> None:
+        """ 
+            _delete session data from the database to keep the total size of application down_
+        """
     # NOTE: Flagged for depreciation once moved to trackStatusVM
     def _getNextStatusChange(
         self, sessionID: int, entryID: int, time: float
@@ -787,9 +842,6 @@ class DBhandler:
             _type_ None: there are no more changes -> this is the last one (endFlag)
         """
         cursor = self.conn.cursor()
-        print(
-            f"dbhandler.py/_getNextStatusChange: attempting to get the time at which the next status change happens within session {sessionID}"
-        )
         cursor.execute(
             """
             SELECT time FROM trackStatus
@@ -895,6 +947,8 @@ class DBhandler:
 
 
 def main():
+    dbHandler = DBhandler()
+    dbHandler.getSessionsFromDB()
     return 0
 
 

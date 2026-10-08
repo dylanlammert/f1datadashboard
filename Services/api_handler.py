@@ -4,6 +4,10 @@ from Services.dbhandler import DBhandler
 import pandas as pd
 from fastf1.events import EventSchedule
 
+"""
+    TODO: 
+        - If f1cache contains > 5 items delete last used item
+"""
 
 def get_schedule_by_year(year: int, testing: bool = False) -> EventSchedule:
     """When passed a year as an int, will return the name of the events.

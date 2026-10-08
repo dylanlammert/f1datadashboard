@@ -15,12 +15,11 @@ NOTE: are we placing these to 'high' are we allowing too many objects to view th
 from ViewModels.driverProfilesVM import DriverProfilesViewModel
 from ViewModels.raceSimulationVM import PlayControlsVM
 from ViewModels.trackStatusVM import TrackStatusVM
-
+from ViewModels.sessionSelectorVM import SessionSelectorVM
 # import dbhandler
 from Services.dbhandler import DBhandler
 from Services.database import create_schema
 from Services.api_handler import get_race
-
 """
 Global Vars
 """
@@ -39,7 +38,7 @@ class MainWindow(QMainWindow):
         self.dbHandler = DBhandler()
         #instantiate the VMs
         self.driverProfilesVM = DriverProfilesViewModel()
-        
+        self.sessionSelectorVM = SessionSelectorVM()
         self.playControlsVM = PlayControlsVM()
         self.trackStatusVM = TrackStatusVM(playControlsVM = self.playControlsVM)
         # set the main container
@@ -60,7 +59,7 @@ class MainWindow(QMainWindow):
         # create the main elements and pass down the switch page function
         self.sidebar = Sidebar(self.switch_page)
         # changed the 1st self to try to pass down currentPageIndx
-        self.home = HomePage(trackStatusViewModel = self.trackStatusVM, playControlsViewModel = self.playControlsVM)
+        self.home = HomePage(trackStatusViewModel = self.trackStatusVM, playControlsViewModel = self.playControlsVM, sessionSelectorViewModel= self.sessionSelectorVM)
         self.settings = DataAnalysisPage()
         # Removed the dbHandler object since the UI shouldn't be exposed to it (traditionally). If there's a reason it was here,
         self.driverProfiles = DriverProfiles(self.driverProfilesVM)

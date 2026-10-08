@@ -5,35 +5,70 @@
 # import things needed for graphs
 import matplotlib.pyplot as plt
 import numpy as np
-
+#from UI.Theme import theme
 import fastf1
-
+import pandas as pd
+from UI.Theme import theme
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 
+""" 
+    TODO:
+        - make the canvas draw based on current theme
+        - make the draw go based off of db
+        - allow this to run offline
+        - if offline only refer to the db for data
+"""
+
 class SimulationCanvas(FigureCanvasQTAgg):
     def __init__(self):
-        self.figure = Figure(facecolor="none")
-        self.ax = self.figure.add_subplot(111)
+        self.figure = Figure(facecolor = theme.background)
+        self.ax = self.figure.add_axes([0,0,1,1])
         self.drivers: list
         super().__init__(self.figure)
-        self.ax.set_xticks([])
-        self.ax.set_yticks([])
-        self.ax.set_aspect("equal")
+        self.ax.set_axis_off()
+        self.ax.set_aspect("equal", adjustable="datalim")
         self.ax.set_facecolor("none")
+        self.driverGPSPos: dict[str , pd.DataFrame] = {}
         #self.drawTrackOutline()
+        """
         for spine in self.ax.spines.values():
             spine.set_visible(False)
+        """
+        self.ax.margins(0.03)
+        self.loadDriverGPSPos()
+        #print(f" VER gps pos data frame \n {self.getDriverGPSPos(abbr = "VER")}")
 
+    def getDriverGPSPos(self, abbr: str) -> pd.DataFrame | None:
+        return self.driverGPSPos.get(abbr.upper()).head(5)
+
+    def loadDriverGPSPos(self, year: int = 2023, event: str = "Bahrain", sessionType: str = "R"):
+        session = fastf1.get_session(year, event, sessionType)
+        session.load(telemetry=True, laps=True, weather=False, messages=False)
+
+        for driverNumber in session.drivers:
+            abbr = session.get_driver(driverNumber)["Abbreviation"]
+            laps = session.laps.pick_drivers(driverNumber)
+
+            frames = []
+            for _, lap in laps.iterlaps():
+                pos = lap.get_pos_data().assign(LapNumber=lap["LapNumber"])
+                frames.append(pos)
+
+            if frames:
+                # one DataFrame per driver: X, Y, Z, Status, Time, SessionTime, LapNumber, ...
+                self.driverGPSPos[abbr] = pd.concat(frames, ignore_index=True)
+
+        
     def drawTrackOutline(self):
+        # make this modular and don't load a fastf1 session every time pull data from rows in the database
         session = fastf1.get_session(2023, 'Bahrain', 'R')
         session.load()
 
         lap = session.laps.pick_fastest()
         pos = lap.get_pos_data()
-        print(pos.columns)
+        #print(pos.columns)
         circuit_info = session.get_circuit_info()
-        print(circuit_info)
         # Get an array of shape [n, 2] where n is the number of points and the second
         # axis is x and y.
         track = pos.loc[:, ('X', 'Y')].to_numpy()
@@ -79,7 +114,10 @@ class SimulationCanvas(FigureCanvasQTAgg):
         
         # run outside of the loop
         #plt.title(session.event['Location'])
-        plt.show()
+        # plt.show()
+        self.ax.relim()
+        self.ax.autoscale_view()
+        self.draw_idle()
 
     def rotate(self, xy, *, angle):
         rot_mat = np.array([[np.cos(angle), np.sin(angle)],
