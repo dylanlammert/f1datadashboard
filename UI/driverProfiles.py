@@ -1,3 +1,4 @@
+from __future__ import annotations
 from PySide6.QtWidgets import (
     QLabel,
     QWidget,
@@ -8,57 +9,105 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QScrollArea,
     QGridLayout,
+    QComboBox,
+    QStackedWidget
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
+from UI.Theme import theme
 from ViewModels.driverProfilesVM import DriverProfilesViewModel
-import typing
 
-"""
-@brief page for the driver profiles
-"""
+# ? Layouts to match home.py's layout. None of these should be used elsewhere.
+_gridMargin: int = 12
+_padding: int = 12
+_borderRadius: int = 20
 
-
-class DriverProfiles(QWidget):
-    def __init__(self, view_model: DriverProfilesViewModel):
-        """Generic initialization of the `DriverProfiles` class
-
-        Args:
-            view_model (DriverProfilesViewModel): A `DriverProfilesViewModel` object that the UI will connect to.
-        """
+class Card(QFrame):
+    def __init__(self):
         super().__init__()
-        self.view_model = view_model
-        self.driver_codes = self.view_model.get_driver_codes()
+        self.setStyleSheet(
+            f"""
+                background-color: {theme.background};
+                border-radius: {_borderRadius}px;
+            """
+        )
 
-        grid = QGridLayout(self)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(0)
+class SearchableDriverDropdown(QComboBox):
+    def __init__(self, driver_codes: list[str]):
+        super().__init__()
+        self.setEditable(True)
+        self.addItems(driver_codes)
 
-        self.nav_bar = DriverNavBar(self.driver_codes)
+        completer = self.completer()
+        if completer:
+            completer.setFilterMode(Qt.MatchFlag.MatchContains)
+            completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
 
-        self.nav_bar.selected_driver_changed.connect(self.view_model.select_driver)
+        self.setStyleSheet(
+            f"""
+            QComboBox {{
+                background-color: #21212e;
+                color: {theme.primaryText};
+                border-radius: 8px;
+                padding: 6px 12px;
+                font-weight: bold;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: #16161f;
+                color: {theme.primaryText};
+                selection-background-color: {theme.info};
+            }}
+            """
+        )
 
-        grid.addWidget(self.nav_bar, 0, 0, 1, 2)
+class ModeHeaderBar(QWidget):
+    __compare_mode_toggled = Signal(bool)
 
-        self.driver_about_section = DriverAboutSection(self.view_model)
+    @property
+    def compare_mode_toggled(self):
+        return self.__compare_mode_toggled
 
-        self.view_model.bio_changed.connect(self.driver_about_section.update_bio)
-        self.view_model.name_changed.connect(self.driver_about_section.update_name)
-        self.view_model.img_changed.connect(self.driver_about_section.update_img)
+    def __init__(self):
+        super().__init__()
+        self.is_compare_mode = False
 
-        grid.addWidget(self.driver_about_section, 1, 0)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        # TODO: We lost a vertical line here :(
+        title = QLabel("Driver Profiles")
+        title.setStyleSheet("color: {theme.primaryText}; font-size: 16px; font-weight: bold;")
 
-        self.driver_stats_section = DriverStatsSection(self.view_model)
-        grid.addWidget(self.driver_stats_section, 1, 1)
+        self.toggle_button = QPushButton(" Compare Drivers")
+        self.toggle_button.setCheckable(True)
+        self.toggle_button.setFixedHeight(32)
+        self.toggle_button.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: #21212e;
+                color: {theme.primaryText};
+                border-radius: 8px;
+                padding: 4px 12px;
+                font-weight: bold;
+            }}
+            QPushButton:checked {{
+                background-color: {theme.info};
+                color: #ffffff;
+            }}
+            """
+        )
+        self.toggle_button.toggled.connect(self._on_toggled)
 
-        grid.setColumnStretch(0, 1)
-        grid.setColumnStretch(1, 1)
+        layout.addWidget(title)
+        layout.addStretch()
+        layout.addWidget(self.toggle_button)
 
+    def _on_toggled(self, checked: bool):
+        self.is_compare_mode = checked
+        self.toggle_button.setText(" Exit Comparison" if checked else " Compare Drivers")
+        self.__compare_mode_toggled.emit(checked)
 
 # Top nav bar. This should probably be a search bar in hindsight, but I like the design of this right now so we're going with it.
-class DriverNavBar(QWidget):
+class DriverNavBar(Card):
     __driver_selected = Signal(str)
 
     @property
@@ -68,54 +117,58 @@ class DriverNavBar(QWidget):
     def __init__(self, driver_codes: list[str]):
         super().__init__()
 
-        drivers = driver_codes
+        self.setFixedHeight(64)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        layout = QVBoxLayout(self)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(_padding, _padding, _padding, _padding)
+        layout.setSpacing(10)
+
+        title_label = QLabel("Drivers")
+        title_label.setStyleSheet(f"color: {theme.primaryText}; font-weight: bold; font-size: 14px;")
+        layout.addWidget(title_label)
+
+        # ? Scrollable container for drivers
         driver_container = QHBoxLayout()
-
-        driver_labels = QLabel("Drivers")
-        vertical_line = QFrame(frameShape=QFrame.Shape.VLine)
-        horizontal_line = QFrame(frameShape=QFrame.Shape.HLine)
-
-        vertical_line.setSizePolicy(
-            QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding
-        )
-
-        driver_container.addWidget(driver_labels)
-        driver_container.addWidget(vertical_line)
-
-        for driver in drivers:
-            driver_button = QPushButton(driver)
-
-            driver_button.clicked.connect(
-                lambda checked=False, code=driver: self._on_driver_button_clicked(code)
-            )
-
-            driver_container.addWidget(driver_button)
-
+        driver_container.setSpacing(6)
         driver_container.setContentsMargins(0, 0, 0, 0)
-        driver_container.setSpacing(10)
 
-        driver_container_widget = QWidget()
-        driver_container_widget.setLayout(driver_container)
+        for driver in driver_codes:
+            btn = QPushButton(driver)
+            btn.setFixedSize(50, 36)
+            btn.setStyleSheet(
+                f"""
+                QPushButton {{
+                    background-color: #21212e;
+                    color: {theme.primaryText};
+                    border-radius: 10px;
+                    font-weight: bold;
+                }}
+                QPushButton:hover {{
+                    background-color: {theme.info}
+                }}
+                """
+            )
+            btn.clicked.connect(lambda checked=False, code=driver: self._on_driver_button_clicked(code))
+            driver_container.addWidget(btn)
+
+        container_widget = QWidget()
+        container_widget.setLayout(driver_container)
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
-        scroll_area.setWidget(driver_container_widget)
+        scroll_area.setWidget(container_widget)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setStyleSheet("background: transparent;")
 
         layout.addWidget(scroll_area)
-        layout.addWidget(horizontal_line)
-
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
     def _on_driver_button_clicked(self, code):
         self.selected_driver_changed.emit(code)
 
 
 # Left side, contains a picture, the name of the driver, and their biography
-class DriverAboutSection(QWidget):
+class DriverAboutSection(Card):
     __driver_bio = Signal(str)
     __driver_name = Signal(str)
     __driver_img = Signal(str)
@@ -137,43 +190,34 @@ class DriverAboutSection(QWidget):
         self.view_model = view_model
 
         layout = QVBoxLayout(self)
-        basic_info = QVBoxLayout()
-        bio = QVBoxLayout()
+        layout.setContentsMargins(_padding, _padding, _padding, _padding)
+        layout.setSpacing(12)
 
         self.image_holder = QLabel()
-        self.image_holder.setPixmap(QPixmap("images/Driver_Not_found.jpg"))
         self.image_holder.setFixedSize(100, 100)
+        self.image_holder.setPixmap(QPixmap("images/Driver_Not_found.jpg"))
 
-        self.name = QLabel("NAME")
-        horizontal_line = QFrame(frameShape=QFrame.Shape.HLine)
-        about = QLabel("ABOUT")
+        self.name = QLabel("SELECT A DRIVER")
+        self.name.setStyleSheet(f"color: {theme.primaryText}; font-size: 18px; font-weight: bold;")
 
-        self.about_text = QLabel("Click on a driver to view their biography.")
+        about_title = QLabel("BIOGRAPHY")
+        about_title.setStyleSheet(f"color: {theme.secondaryText}; font-weight: bold; font-size: 12px;")
+
+        self.about_text = QLabel("Click on a driver above to view their biography and stats.")
         self.about_text.setWordWrap(True)
-        self.about_text.setAlignment(Qt.AlignmentFlag.AlignJustify)
+        self.about_text.setStyleSheet(f"color: {theme.primaryText}; line-height: 1.4;")
+        self.about_text.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setWidget(self.about_text)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setStyleSheet("background: transparent;")
 
-        basic_info.addWidget(self.image_holder, alignment=Qt.AlignmentFlag.AlignHCenter)
-        basic_info.addWidget(self.name, alignment=Qt.AlignmentFlag.AlignHCenter)
-
-        bio.addWidget(about, alignment=Qt.AlignmentFlag.AlignHCenter)
-        bio.addWidget(scroll_area)
-
-        basic_info.setContentsMargins(10, 10, 10, 10)
-        bio.setContentsMargins(10, 10, 10, 10)
-
-        layout.addLayout(basic_info)
-        layout.addWidget(horizontal_line)
-        layout.addLayout(bio)
-
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-
-        layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        layout.addStretch()
+        layout.addWidget(self.image_holder, alignment=Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(self.name, alignment=Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(about_title, alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(scroll_area)
 
     def update_bio(self, bio_text: str) -> None:
         self.about_text.setText(bio_text)
@@ -186,53 +230,69 @@ class DriverAboutSection(QWidget):
 
 
 # Right side, contains their placement history and their career stats
-class DriverStatsSection(QWidget):
+class DriverStatsSection(Card):
     def __init__(self, view_model: DriverProfilesViewModel):
         super().__init__()
         self.view_model = view_model
 
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(_padding, _padding, _padding, _padding)
+        self.main_layout.setSpacing(12)
+
+        placements_title = QLabel("Recent Placements")
+        placements_title.setStyleSheet(f"color: {theme.secondaryText}; font-weight: bold; font-size: 12px;")
+        self.main_layout.addWidget(placements_title)
+
         # TODO: Pull this from Viewmodel later
         placement_history = [8, 1, 2, 1, 4]
         location_history = ["London", "Paris", "Norway", "Quatar", "Turkey"]
+        formatted_cards = self.view_model.get_formatted_placements(placement_history, location_history)
 
-        layout = QVBoxLayout(self)
-        placements = QVBoxLayout()
         race_history = QHBoxLayout()
-
-        placements_text = QLabel("Placements")
-        placements.addWidget(placements_text, alignment=Qt.AlignmentFlag.AlignCenter)
-
-        formatted_cards = self.view_model.get_formatted_placements(
-            placement_history, location_history
-        )
+        race_history.setSpacing(8)
 
         for placement_str, location_str in formatted_cards:
             card_frame = QFrame()
-            card_frame.setFrameShape(QFrame.Shape.StyledPanel)
-            card_frame.setFixedSize(70, 70)
+            card_frame.setFixedSize(75, 75)
+            card_frame.setStyleSheet(
+                f"""
+                background-color: #21212e;
+                border-radius: 12px;
+                """
+            )
             card_layout = QVBoxLayout(card_frame)
+            card_layout.setContentsMargins(4, 4, 4, 4)
+
             placement_label = QLabel(placement_str)
+            placement_label.setStyleSheet(f"color: {theme.info}; font-weight: bold; font-size: 16px;")
+            placement_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
             location_label = QLabel(location_str)
-            card_layout.addWidget(
-                placement_label, alignment=Qt.AlignmentFlag.AlignCenter
-            )
-            card_layout.addWidget(
-                location_label, alignment=Qt.AlignmentFlag.AlignCenter
-            )
+            location_label.setStyleSheet(f"color: {theme.secondaryText}; font-size: 11px;")
+            location_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            card_layout.addWidget(placement_label)
+            card_layout.addWidget(location_label)
+            
             race_history.addWidget(card_frame)
 
         race_history.addStretch()
-        race_history.setContentsMargins(10, 10, 10, 10)
+        
         race_widget = QWidget()
         race_widget.setLayout(race_history)
+
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setWidget(race_widget)
-        scroll_area.setFixedHeight(110)
+        scroll_area.setFixedHeight(95)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setStyleSheet("background: transparent;")
+        self.main_layout.addWidget(scroll_area)
 
         self.career_stats_layout = QGridLayout()
-        self.career_placeholder = QLabel("No Stats. Select a driver to see stats!")
-        self.career_stats_layout.addWidget(self.career_placeholder)
+        self.career_placeholder = QLabel("Select a driver to view career statistics.")
+        self.career_placeholder.setStyleSheet(f"color: {theme.secondaryText};")
+        self.career_stats_layout.addWidget(self.career_placeholder, 0, 0)
 
         career_stats_widget = QWidget()
         career_stats_widget.setLayout(self.career_stats_layout)
@@ -240,17 +300,10 @@ class DriverStatsSection(QWidget):
         career_stats_scroll = QScrollArea()
         career_stats_scroll.setWidgetResizable(True)
         career_stats_scroll.setWidget(career_stats_widget)
+        career_stats_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        career_stats_scroll.setStyleSheet(f"background: transparent;")
 
-        placements.addWidget(scroll_area)
-        layout.addLayout(placements)
-        layout.addWidget(QFrame(frameShape=QFrame.Shape.HLine))
-        layout.addWidget(career_stats_scroll)
-
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-        layout.setAlignment(Qt.AlignmentFlag.AlignRight)
-
-        self.view_model.stats_changed.connect(self.update_stats)
+        self.main_layout.addWidget(career_stats_scroll)
 
     def update_stats(self, driver_stats: dict[str, str]) -> None:
         while self.career_stats_layout.count():
@@ -258,31 +311,114 @@ class DriverStatsSection(QWidget):
 
             # ? PyLance was being an ass about "None" not having .deleteLater() despite a very elegant assert statement (assert item is not None)
             # ?     so now we have to deal with this and it's ugly and I hate it with all my heart <3
-            if item is not None:
+            if item is not None and item.widget():
                 widget = item.widget()
                 if widget is not None:
                     widget.deleteLater()
 
         career_stats_title = QLabel("Career Stats")
+        career_stats_title.setStyleSheet(f"color: {theme.primaryText}; font-size: 14px; font-weight: bold;")
+        self.career_stats_layout.addWidget(career_stats_title, 0, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        self.career_stats_layout.addWidget(
-            career_stats_title, 0, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignCenter
-        )
+        for row_idx, (label_text, value_text) in enumerate(driver_stats.items(), start=1):
+            label = QLabel(label_text)
+            label.setStyleSheet(f"color: {theme.secondaryText}; font-size: 13px;")
 
-        for row_idx, (title, stats) in enumerate(driver_stats.items(), start=1):
-            self._populate_career_stats(self.career_stats_layout, row_idx, title, stats)
+            value = QLabel(str(value_text))
+            value.setStyleSheet(f"color: {theme.primaryText}; font-size: 13px; font-weight: bold;")
 
-    def _populate_career_stats(
-        self, grid: QGridLayout, row: int, label: str, data: typing.Any
-    ) -> None:
-        _label = QLabel(label)
-        _data = QLabel(data)
+            grid_row = row_idx * 2
+            self.career_stats_layout.addWidget(label, grid_row, 0, alignment=Qt.AlignmentFlag.AlignLeft)
+            self.career_stats_layout.addWidget(value, grid_row, 1, alignment=Qt.AlignmentFlag.AlignRight)
 
-        # ? Leaves space for the horizontal divider between each row
-        grid_row = row * 2
+            line = QFrame()
+            line.setFrameShape(QFrame.Shape.HLine)
+            line.setStyleSheet(f"background-color: #21212e; max-height: 1px")
+            self.career_stats_layout.addWidget(line, grid_row + 1, 0, 1, 2)
 
-        grid.addWidget(_label, grid_row, 0, alignment=Qt.AlignmentFlag.AlignLeft)
-        grid.addWidget(_data, grid_row, 1, alignment=Qt.AlignmentFlag.AlignRight)
+    def add_header_widget(self, widget: QWidget):
+        """Helper to insert a widget to the top of the main card.
 
-        horizontal_line = QFrame(frameShape=QFrame.Shape.HLine)
-        grid.addWidget(horizontal_line, grid_row + 1, 0, 1, 2)
+        Args:
+            widget (QWidget): The QWidget object to insert
+        """
+        self.main_layout.insertWidget(0, widget)
+
+class DriverProfiles(QWidget):
+    def __init__(self, view_model: DriverProfilesViewModel):
+        super().__init__()
+        self.view_model = view_model
+        self.driver_codes = self.view_model.get_driver_codes()
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(12)
+        main_layout.setContentsMargins(_gridMargin, _gridMargin, _gridMargin, _gridMargin)
+
+        self.header_bar = ModeHeaderBar()
+        main_layout.addWidget(self.header_bar)
+
+        self.nav_bar = DriverNavBar(self.driver_codes)
+        main_layout.addWidget(self.nav_bar)
+
+        grid_widget = QWidget()
+        self.grid = QGridLayout(grid_widget)
+        self.grid.setSpacing(_gridMargin)
+        self.grid.setContentsMargins(0, 0, 0, 0)
+
+        self.left_stack = QStackedWidget()
+
+        # Left Page 0: Biography Section
+        self.driver_about_section = DriverAboutSection(self.view_model)
+        self.left_stack.addWidget(self.driver_about_section)
+
+        # Left Page 1: Driver A Stats Card (with Dropdown)
+        self.driver_a_stats_section = DriverStatsSection(self.view_model)
+        self.dropdown_a = SearchableDriverDropdown(self.driver_codes)
+        self.driver_a_stats_section.add_header_widget(self.dropdown_a)
+        self.left_stack.addWidget(self.driver_a_stats_section)
+
+        self.grid.addWidget(self.left_stack, 0, 0)
+
+        self.driver_b_stats_section = DriverStatsSection(self.view_model)
+        self.dropdown_b = SearchableDriverDropdown(self.driver_codes)
+        self.driver_b_stats_section.add_header_widget(self.dropdown_b)
+        self.dropdown_b.hide()
+
+        self.grid.addWidget(self.driver_b_stats_section, 0, 1)
+
+        self.grid.setColumnStretch(0, 1)
+        self.grid.setColumnStretch(1, 1)
+
+        main_layout.addWidget(grid_widget)
+
+        self.header_bar.compare_mode_toggled.connect(self._set_compare_mode)
+
+        self.nav_bar.selected_driver_changed.connect(self.view_model.select_driver)
+        self.dropdown_a.currentTextChanged.connect(self.view_model.select_driver)
+        self.nav_bar.selected_driver_changed.connect(self.dropdown_a.setCurrentText)
+        self.dropdown_b.currentTextChanged.connect(self.view_model.select_driver_b)
+
+        self.view_model.bio_changed.connect(self.driver_about_section.update_bio)
+        self.view_model.name_changed.connect(self.driver_about_section.update_name)
+        self.view_model.img_changed.connect(self.driver_about_section.update_img)
+        self.view_model.stats_changed.connect(self.driver_a_stats_section.update_stats)
+
+        self.view_model.stats_changed.connect(self.driver_b_stats_section.update_stats)
+
+    def _set_compare_mode(self, enabled: bool) -> None:
+        if enabled:
+            self.nav_bar.hide()
+            self.left_stack.setCurrentIndex(1)
+            self.dropdown_b.show()
+
+            self.view_model.stats_changed.disconnect(self.driver_b_stats_section.update_stats)
+            self.view_model.stats_b_changed.connect(self.driver_b_stats_section.update_stats)
+
+        else:
+            self.nav_bar.show()
+            self.left_stack.setCurrentIndex(0)
+            self.dropdown_b.hide()
+
+            # Right side switches from Driver B → Driver A/current driver
+            self.view_model.stats_b_changed.disconnect(self.driver_b_stats_section.update_stats)
+            self.view_model.stats_changed.connect(self.driver_b_stats_section.update_stats)

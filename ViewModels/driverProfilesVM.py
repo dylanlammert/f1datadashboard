@@ -1,3 +1,4 @@
+from __future__ import annotations
 from PySide6.QtCore import QObject, Signal, QByteArray, Qt, QRunnable, QThreadPool
 from Services.stat_scraper import DriverStatScraper
 from Services.dbhandler import DBhandler
@@ -25,7 +26,6 @@ class ImageWorker(QRunnable):
 
         pixmap = QPixmap()
         if not (image_bytes and pixmap.loadFromData(QByteArray(image_bytes))):
-            # TODO: Replace this with a generic "Driver Not Found" image later
             pixmap = QPixmap("images/Driver_Not_found.jpg")
 
         scaled = pixmap.scaled(
@@ -70,6 +70,9 @@ class DriverProfilesViewModel(QObject):
     __bio_loaded = Signal(str)
     __name_loaded = Signal(str)
     __img_loaded = Signal(QPixmap)
+    __stats_b_loaded = Signal(dict)
+    __name_b_loaded = Signal(str)
+    __img_b_loaded = Signal(QPixmap)
 
     @property
     def stats_changed(self):
@@ -87,6 +90,18 @@ class DriverProfilesViewModel(QObject):
     def img_changed(self):
         return self.__img_loaded
 
+    @property
+    def stats_b_changed(self):
+        return self.__stats_b_loaded
+
+    @property
+    def name_b_changed(self):
+        return self.__name_b_loaded
+
+    @property
+    def img_b_changed(self):
+        return self.__img_b_loaded
+
     def __init__(self):
         """Generic initialization of the `DriverProfilesViewModel` class
 
@@ -99,9 +114,6 @@ class DriverProfilesViewModel(QObject):
 
         self.scraper = DriverStatScraper()
         self.thread_pool = QThreadPool.globalInstance()
-
-        # ? Initializing this here in case we need to remember this data between state changes. It'd be easy to remove this later if we want to.
-        self.current_stats: dict[str, str] = {}
 
     # Methods to be used externally
     def get_driver_names(self) -> list[str]:
@@ -214,6 +226,30 @@ class DriverProfilesViewModel(QObject):
         worker.signals.finished_signal.connect(self.img_changed.emit)
 
         self.thread_pool.start(worker)
+
+    def select_driver_b(self, driver_code: str):
+        driver_dict = self._get_known_drivers()
+
+        _driver_display_name = driver_dict[driver_code]
+        driver_name = _driver_display_name.lower().replace(" ", "-")
+
+        soup = self.scraper.get_soup(driver_name)
+
+        if soup is None:
+            self.stats_b_changed.emit({"Status": "No Stats Available"})
+            self.name_b_changed.emit(_driver_display_name)
+            raise ValueError(f"Driver not found: {driver_name}. Showing default values")
+
+        career_stats = self.get_career_stats(soup)
+        if not career_stats:
+            career_stats = {"Status": "No Stats Available"}
+
+        self.stats_b_changed.emit(career_stats)
+        self.name_b_changed.emit(_driver_display_name)
+
+        worker = ImageWorker(self.scraper, soup, size=60)
+        worker.signals.finished_signal.connect(self.img_b_changed.emit)
+        self.thread_pool.start(worker)
     
     # Helper Methods
     def _get_known_drivers(self) -> dict[str, str]:
@@ -252,9 +288,7 @@ class DriverProfilesViewModel(QObject):
         if not data:
             return {"ERROR": "Data Unavailable"}
 
-        self.current_stats = data[scope]
-
-        return self.current_stats
+        return data[scope]
 
 def _main():
     vm_test = DriverProfilesViewModel()

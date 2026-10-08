@@ -1,4 +1,5 @@
 # Imports
+from __future__ import annotations
 import fastf1
 from Services.dbhandler import DBhandler
 import pandas as pd
