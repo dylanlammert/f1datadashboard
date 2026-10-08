@@ -35,9 +35,10 @@ def get_race(year: int, event_name: str, type: str = "R") -> None:
     """
     handler = DBhandler()
     try:
-        handler.loadSessionIntoDB(fastf1.get_session(year, event_name, type))
+        new_session_id = handler.loadSessionIntoDB(fastf1.get_session(year, event_name, type))
     finally:
         handler.close()
+        return new_session_id
 
 
 # Helper/Debug Functions

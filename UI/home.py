@@ -5,6 +5,7 @@ from ViewModels.raceSimulationVM import PlayControlsVM
 from ViewModels.trackStatusVM import TrackStatusVM
 from ViewModels.simulationGraphVM import SimulationCanvas
 from ViewModels.sessionSelectorVM import SessionSelectorVM
+from ViewModels.connectivityVM import ConnectivityVM
 from Services.dbhandler import DBhandler
 from PySide6.QtWidgets import (
     QGridLayout,
@@ -263,7 +264,7 @@ class HomePage(QWidget):
     """_Home page UI layout, instantiates different UI objects and places them on the homepage widget_
 
     """
-    def __init__(self, trackStatusViewModel: TrackStatusVM, playControlsViewModel: PlayControlsVM, sessionSelectorViewModel: SessionSelectorVM ):
+    def __init__(self, trackStatusViewModel: TrackStatusVM, playControlsViewModel: PlayControlsVM, sessionSelectorViewModel: SessionSelectorVM, conectivityViewModel: ConnectivityVM ):
         super().__init__()
         # share the mem location of VMs
         self.trackStatusController = trackStatusViewModel
@@ -283,7 +284,7 @@ class HomePage(QWidget):
         driverSimFrame = DriverSIM(trackStatus = self.trackStatusController, playControlsController = self.playControlsController)
         gridLayout.addWidget(driverSimFrame, 1,0, 3, 3)
         # create the session selector
-        sessionFrame = SessionSelector(sessionSelectorViewModel)
+        sessionFrame = SessionSelector(sessionSelectorViewModel, conectivityViewModel)
         gridLayout.addWidget(sessionFrame, 0, 0, 1, 3)
         # create the driver placement UI 
         driverStandingsFrame = DriverStandings()
@@ -353,9 +354,11 @@ class SessionSelector(Card):
     """
     _UI element that creates a few dropdown menus and submit button so the user can change sessions_
     """
-    def __init__(self, sessionSelectorViewModel):
+    def __init__(self, sessionSelectorViewModel: SessionSelectorVM, conectivityViewModel: ConnectivityVM):
         super().__init__()
         self.sessionSelectorViewModel = sessionSelectorViewModel
+        self.conectivityViewModel = conectivityViewModel
+        self.conectivityViewModel.onlineChanged.connect(self.__onConnectionChange)
         self.setMaximumHeight(50)
         # create and add a label for layout purposes
         layout = QHBoxLayout(self)
@@ -378,6 +381,7 @@ class SessionSelector(Card):
         layout.addWidget(self.yearSelector)
         layout.addWidget(self.eventSelector)
         layout.addWidget(self.sessionSelector)
+        layout.addWidget(self.connectionLabel)
 
 
         # self.yearSelector.currentIndexChanged.connect(self.onYearChanged)
@@ -393,4 +397,10 @@ class SessionSelector(Card):
         once yearSelector is chosen ask fastf1 api 
         """
         print("change sessions available for review")
-        
+    def __onConnectionChange(self, isOnline: bool):
+        if isOnline:
+            self.connectionLabel.setText("Online")
+            self.connectionLabel.setStyleSheet(f"color: {theme.success}")
+        else:
+            self.connectionLabel.setText("Offline")
+            self.connectionLabel.setStyleSheet(f"color: {theme.warning}")

@@ -12,6 +12,10 @@ Everything that used to live in Services/database.py (creating the schema,
 loading a FastF1 session into the tables, previewing them) is now a method on
 DBhandler. Services/database.py still exists as a thin wrapper so older code
 that imports from it keeps working.
+
+TODO: 
+    - loadsessionintodb only loads session5 into the db of a specified event
+    - need to update table functions to reflect changes in sessionSelector
 """
 
 os.makedirs("f1_cache", exist_ok=True)
@@ -406,7 +410,7 @@ class DBhandler:
 
         conn.commit()
 
-    def loadSessionIntoDB(self, session: Session) -> None:
+    def loadSessionIntoDB(self, session: Session) -> int:
         """Provided a session, will insert the session data into the database
 
         Args:
@@ -429,7 +433,7 @@ class DBhandler:
         # copy data from session.track_status
         trackStatusDF = session.track_status.copy()
         # ? Session5 is the race event. Do we care about practices and qualifiers? If so, we need to handle that.
-        # - yes because we could add a graph to show starting position diffentials vs where drivers started at the beginning of practices
+        # TODO: yes because we could add a graph to show starting position diffentials vs where drivers started at the beginning of practices
         session_type = session.event.Session5
         session_time = calculateTotalSessionTime(session)
         # Insert into sessions table (or get existing session_id if already loaded)
@@ -588,6 +592,7 @@ class DBhandler:
             f"Loaded {len(results)} drivers, {len(laps)} laps, and {len(weather)} "
             f"weather samples for {year} {event} {session_type}"
         )
+        return session_id
 
     def previewDB(self) -> None:
         """Helper function to print out the database"""
@@ -656,18 +661,18 @@ class DBhandler:
         print("dbhandler.py/_checkNames: Valid access to tables within database")
 
     # NOTE: Flagged for Depreciation
-    def getSessionID(self, tableName: str, searchIndex: int) -> int:
+    def getSessionID(self, tableName: str, year: int, eventName: str, sessionType: str) -> int:
         """
         _summary_: get the session_id of one row, looked up by entry_id
 
         Returns:
             _type_ int: the session_id, or -1 if the row doesn't exist
         """
-        self._checkNames(tableName, ("entry_id", "session_id"))
+        #self._checkNames(tableName, ("entry_id", "session_id"))
         cursor = self.conn.cursor()
         cursor.execute(
-            f"SELECT session_id FROM {tableName} WHERE entry_id = ? LIMIT 1",
-            (searchIndex,),
+            f"SELECT session_id FROM {tableName} WHERE year = ? AND event_name = ? AND session_type = ? LIMIT 1",
+            (year, eventName, sessionType),
         )
         sessionID = cursor.fetchone()
         if sessionID is None:

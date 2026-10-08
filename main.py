@@ -16,6 +16,7 @@ from ViewModels.driverProfilesVM import DriverProfilesViewModel
 from ViewModels.raceSimulationVM import PlayControlsVM
 from ViewModels.trackStatusVM import TrackStatusVM
 from ViewModels.sessionSelectorVM import SessionSelectorVM
+from ViewModels.connectivityVM import ConnectivityVM
 # import dbhandler
 from Services.dbhandler import DBhandler
 from Services.database import create_schema
@@ -37,8 +38,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("F1 Data Analysis")
         self.dbHandler = DBhandler()
         #instantiate the VMs
+        self.conectivityVM = ConnectivityVM()
         self.driverProfilesVM = DriverProfilesViewModel()
-        self.sessionSelectorVM = SessionSelectorVM()
+        self.sessionSelectorVM = SessionSelectorVM(conectivityModel= self.conectivityVM)
         self.playControlsVM = PlayControlsVM()
         self.trackStatusVM = TrackStatusVM(playControlsVM = self.playControlsVM)
         # set the main container
@@ -59,7 +61,7 @@ class MainWindow(QMainWindow):
         # create the main elements and pass down the switch page function
         self.sidebar = Sidebar(self.switch_page)
         # changed the 1st self to try to pass down currentPageIndx
-        self.home = HomePage(trackStatusViewModel = self.trackStatusVM, playControlsViewModel = self.playControlsVM, sessionSelectorViewModel= self.sessionSelectorVM)
+        self.home = HomePage(trackStatusViewModel = self.trackStatusVM, playControlsViewModel = self.playControlsVM, sessionSelectorViewModel= self.sessionSelectorVM, conectivityViewModel= self.conectivityVM)
         self.settings = DataAnalysisPage()
         # Removed the dbHandler object since the UI shouldn't be exposed to it (traditionally). If there's a reason it was here,
         self.driverProfiles = DriverProfiles(self.driverProfilesVM)
