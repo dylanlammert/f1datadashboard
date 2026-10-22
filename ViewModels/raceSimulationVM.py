@@ -1,6 +1,8 @@
 from PySide6.QtCore import QObject, Signal, QTimer
 from Services.dbhandler import DBhandler
 from ViewModels.sessionSelectorVM import SessionSelectorVM
+
+
 class DriverStandingsVM(QObject):
     """_summary_
 
@@ -28,7 +30,7 @@ class DriverStandingsVM(QObject):
         list
     )  # could potentially use this to double for list of active drivers
 
-    @property 
+    @property
     def updatedFocusDriver(self):
         return self.__updatedFocusDriver
 
@@ -89,6 +91,7 @@ class DriverStandingsVM(QObject):
         # updated list of Dictionaries
         return 0
 
+
 class PlayControlsVM(QObject):
     """_view model for the play controls ui_
 
@@ -100,32 +103,34 @@ class PlayControlsVM(QObject):
         update Track status marks on playcontrols
 
     Notes:
-        - The seconds will need to interact with the player standings so that 
+        - The seconds will need to interact with the player standings so that
           we don't have to constantly send updates from the View Model
         - This will also need to interact with race simulation
-        - make sure that this doesn't need to ping the signal every millisecond 
+        - make sure that this doesn't need to ping the signal every millisecond
           only update the signals on important changes (togglePlay, newSection, newLap).
           might need to implement some time correcting if the other vms get out of sync
-        WHAT THIS NEEDS TO WORK 
+        WHAT THIS NEEDS TO WORK
         - needs to have the total session time for each selected session
         - needs to be able to show current time and total time on front end
         - needs to be able to change current time
         - needs to be able to play / pause simulation
-    TODO: 
+    TODO:
         - change signals to private properties
     """
+
     updatedTime = Signal(float)
     updatedRaceDuration = Signal(float)
     # this should probably be a property of play controls it will need to listen to changes
     updatedPlayingStatus = Signal(bool)
+
     # used to display time on play back slider
     def __init__(self, sessionSelectorVM: SessionSelectorVM):
         super().__init__()
         self.__isPlaying: bool = False
-        self.currentTime:float = 0.00
+        self.currentTime: float = 0.00
         self.currentRaceDuration: float = 0.00
         self.playBackSpeed: int = 1
-        # read only 
+        # read only
         self.dbhandler = DBhandler()
         self.sessionSelectorVM = sessionSelectorVM
         # create timer
@@ -139,10 +144,8 @@ class PlayControlsVM(QObject):
         # self.timer.start()
         self.sessionSelectorVM.currentSessionIDChanged.connect(self.fetchRaceDuration)
 
-
     def __tick(self):
-        """_helper function that calls setCurrentTime everytime the timer is incremented_
-        """
+        """_helper function that calls setCurrentTime everytime the timer is incremented_"""
         # print(f"timer = {self.currentTime + 1}")
         self.setCurrentTime(self.currentTime + self.playBackSpeed)
 
@@ -155,7 +158,7 @@ class PlayControlsVM(QObject):
             change above timeAtTogglePressed, don't think I need it
         """
         # if simulation is playing then pause
-        if(self.__isPlaying):
+        if self.__isPlaying:
             self.__isPlaying = False
             self.updatedPlayingStatus.emit(False)
             self.timer.stop()
@@ -163,8 +166,10 @@ class PlayControlsVM(QObject):
             self.__isPlaying = True
             self.updatedPlayingStatus.emit(True)
             self.timer.start()
+
     def getIsPlaying(self):
         return self.__isPlaying
+
     # TODO: write documentation for this and finish this code later
     def setPlaybackSpeed(self, newPlaybackSpeed: int):
         self.playBackSpeed = newPlaybackSpeed
@@ -179,7 +184,7 @@ class PlayControlsVM(QObject):
         # make what ever is reading the data convert the convert the time to a string and update the updatedTime hour: minute: second
         self.currentTime = newCurrentTime
         self.updatedTime.emit(newCurrentTime)
-        
+
     def fetchRaceDuration(self, newSessionID: int = 1) -> float:
         """
         _grabs the current session duration from session table in database_
@@ -187,7 +192,7 @@ class PlayControlsVM(QObject):
         Args:
             _sessionId_ (int) : the integer id of the current session being loaded into the simulation
 
-        NOTE: 
+        NOTE:
             in future make this handle getting data via getDataFromTable
         """
         totalDuration = self.dbhandler.getSessionTime(newSessionID)
@@ -195,22 +200,24 @@ class PlayControlsVM(QObject):
         # might need to handle if the value is None
         if totalDuration is None:
             return 0.0
-        
+
         self.setRaceDuration(totalDuration)
         return totalDuration
 
     def setRaceDuration(self, newDuration: float):
-        print(f"raceSimulationVM.py/PlayControlsVM/setRaceDuration: attempting to set new duration to {newDuration}")
-        if(newDuration != self.currentRaceDuration):
+        print(
+            f"raceSimulationVM.py/PlayControlsVM/setRaceDuration: attempting to set new duration to {newDuration}"
+        )
+        if newDuration != self.currentRaceDuration:
             self.currentRaceDuration = newDuration
-            print(f"raceSimulationVM.py/setRaceDuration: newDuration is different from currentDuration so send a signal to update")
+            print(
+                "raceSimulationVM.py/setRaceDuration: newDuration is different from currentDuration so send a signal to update"
+            )
             self.updatedRaceDuration.emit(newDuration)
-            
 
     def seek(self):
-        #stub
+        # stub
         return 0
-    
 
 
 class RaceHandler(QObject):

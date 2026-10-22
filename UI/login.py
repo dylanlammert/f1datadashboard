@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
 )
-import fastf1
 
 from ViewModels.connectivityVM import ConnectivityVM
 
@@ -22,12 +21,12 @@ class LoginPage(QWidget):
         self.connectionStatus = connectionStatus
 
         self.setWindowTitle("F1 Login")
-        self.setWindowFlag(Qt.Dialog)                 # opens as a popup window
-        self.setWindowModality(Qt.ApplicationModal)   # blocks the main window
+        self.setWindowFlag(Qt.Dialog)  # opens as a popup window
+        self.setWindowModality(Qt.ApplicationModal)  # blocks the main window
         self.resize(360, 260)
 
         layout = QVBoxLayout(self)
-        self.prompt = ConnectionPrompt(connectionStatus= self.connectionStatus)
+        self.prompt = ConnectionPrompt(connectionStatus=self.connectionStatus)
         self.form = LoginForm()
         layout.addWidget(self.prompt)
         layout.addWidget(self.form)
@@ -45,16 +44,18 @@ class ConnectionPrompt(QFrame):
         connectionStatus.onlineChanged.connect(self.connectionMessage)
         layout = QVBoxLayout(self)
 
-        self.label = QLabel("No internet connection.\nConnect to the internet to log in.")
-        self.connectionMessage(isConnected= connectionStatus.isOnline)
+        self.label = QLabel(
+            "No internet connection.\nConnect to the internet to log in."
+        )
+        self.connectionMessage(isConnected=connectionStatus.isOnline)
         self.label.setAlignment(Qt.AlignCenter)
 
         layout.addWidget(self.label)
 
     def connectionMessage(self, isConnected: bool):
-        if isConnected: 
+        if isConnected:
             message = ""
-        else: 
+        else:
             message = "No internet connection.\nConnect to the internet to log in."
         self.label.setText(message)
 
@@ -107,7 +108,7 @@ class LoginForm(QFrame):
 
         # FastF1 reads these two variables (only this subprocess gets them)
         env = QProcessEnvironment.systemEnvironment()
-        
+
         env.insert("FASTF1_AUTH_METHOD", "password")
         env.insert("F1_USERNAME", email)
         env.insert("F1_PASSWORD", password)
@@ -117,9 +118,11 @@ class LoginForm(QFrame):
         self.loginBtn.setEnabled(False)
         self.statusLabel.setText("Logging in...")
 
-        self.process.start(sys.executable, ["-u", "-m", "fastf1", "auth", "f1tv", "--authenticate"])
+        self.process.start(
+            sys.executable, ["-u", "-m", "fastf1", "auth", "f1tv", "--authenticate"]
+        )
         self.process.closeWriteChannel()
-    
+
     def onOutput(self):
         text = bytes(self.process.readAllStandardOutput()).decode(errors="ignore")
         self.statusLabel.setText(text.strip()[-300:])

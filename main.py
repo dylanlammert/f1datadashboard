@@ -1,13 +1,21 @@
 import sys
 from pathlib import Path
 from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget
-from PySide6.QtWidgets import QHBoxLayout, QWidget, QVBoxLayout, QPushButton, QFrame, QLabel
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QWidget,
+    QVBoxLayout,
+    QPushButton,
+    QFrame,
+    QLabel,
+)
 from PySide6.QtGui import QPalette, Qt
 
 from UI.home import HomePage
 from UI.dataAnalysisPage import GraphCanvasContainer
 from UI.driverProfiles import DriverProfiles
 from UI.login import LoginPage
+
 # Import VMs
 """
 NOTE: are we placing these to 'high' are we allowing too many objects to view these VM's
@@ -17,6 +25,7 @@ from ViewModels.raceSimulationVM import PlayControlsVM
 from ViewModels.trackStatusVM import TrackStatusVM
 from ViewModels.sessionSelectorVM import SessionSelectorVM
 from ViewModels.connectivityVM import ConnectivityVM
+
 # import dbhandler
 from Services.dbhandler import DBhandler
 from Services.database import create_schema
@@ -33,17 +42,20 @@ backgroundColor = "#1A1A1A"
         launched on startup
 """
 
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("F1 Data Analysis")
         self.dbHandler = DBhandler()
-        #instantiate the VMs
+        # instantiate the VMs
         self.conectivityVM = ConnectivityVM()
         self.driverProfilesVM = DriverProfilesViewModel()
-        self.sessionSelectorVM = SessionSelectorVM(conectivityModel= self.conectivityVM)
-        self.playControlsVM = PlayControlsVM(sessionSelectorVM= self.sessionSelectorVM)
-        self.trackStatusVM = TrackStatusVM(playControlsVM = self.playControlsVM, sessionSelectorVM=self.sessionSelectorVM)
+        self.sessionSelectorVM = SessionSelectorVM(conectivityModel=self.conectivityVM)
+        self.playControlsVM = PlayControlsVM(sessionSelectorVM=self.sessionSelectorVM)
+        self.trackStatusVM = TrackStatusVM(
+            playControlsVM=self.playControlsVM, sessionSelectorVM=self.sessionSelectorVM
+        )
         # set the main container
         mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
@@ -59,8 +71,13 @@ class MainWindow(QMainWindow):
         # create the main elements and pass down the switch page function
         self.sidebar = Sidebar(self.switch_page, self.conectivityVM)
         # changed the 1st self to try to pass down currentPageIndx
-        self.home = HomePage(trackStatusViewModel = self.trackStatusVM, playControlsViewModel = self.playControlsVM, sessionSelectorViewModel= self.sessionSelectorVM, conectivityViewModel= self.conectivityVM)   
-        self.settings = GraphCanvasContainer()
+        self.home = HomePage(
+            trackStatusViewModel=self.trackStatusVM,
+            playControlsViewModel=self.playControlsVM,
+            sessionSelectorViewModel=self.sessionSelectorVM,
+            conectivityViewModel=self.conectivityVM,
+        )
+        self.settings = GraphCanvasContainer(session_selector=self.sessionSelectorVM)
         # Removed the dbHandler object since the UI shouldn't be exposed to it (traditionally). If there's a reason it was here,
         self.driverProfiles = DriverProfiles(self.driverProfilesVM)
 
@@ -129,9 +146,7 @@ class Sidebar(QFrame):
     def removeLoginButton(self):
         self.layout.removeWidget(self.loginButton)
         self.loginButton.deleteLater()
-        return 
-        
-
+        return
 
     """
     @brief styling function to add a background color to current page
@@ -140,8 +155,9 @@ class Sidebar(QFrame):
     def updateHightlight(self):
         print("update button highlight")
 
+
 class LoginButton(QFrame):
-    def __init__(self, connectivityVM : ConnectivityVM):
+    def __init__(self, connectivityVM: ConnectivityVM):
         super().__init__()
         sectionLayout = QVBoxLayout(self)
         self.connectivityVM = connectivityVM
@@ -154,9 +170,9 @@ class LoginButton(QFrame):
         # add to section layout
         sectionLayout.addWidget(loginlabel)
         sectionLayout.addWidget(loginButton)
-    
+
     def openLogin(self):
-        self.loginPage = LoginPage(connectionStatus= self.connectivityVM)
+        self.loginPage = LoginPage(connectionStatus=self.connectivityVM)
         self.loginPage.show()
 
 
@@ -167,7 +183,7 @@ def _main():
     if not Path("./f1_data.db"):
         create_schema()
         get_race(2026, "Japanese Grand Prix", "R")
-    
+
     window = MainWindow()
     window.resize(700, 300)
     window.show()

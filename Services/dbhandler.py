@@ -6,6 +6,8 @@ import pandas as pd
 from fastf1.events import Session
 import traceback
 
+from graphs.graph_metrics import MetricSpec
+
 """
 dbhandler.py — the ONE place the app talks to the database.
 
@@ -40,8 +42,10 @@ def _to_text(value):
     """NaN / None / "" -> None, otherwise a string"""
     return None if pd.isna(value) or str(value).strip() == "" else str(value)
 
+
 def _to_seconds(value):
     return None if pd.isna(value) else value.total_seconds()
+
 
 def calculateTotalSessionTime(session: Session) -> float:
     """_helper function to calculate the total session time based off of session flags_
@@ -138,14 +142,24 @@ ALLOWED_COLUMNS: dict = {
         "driver",
         "team",
         "lap_number",
+        "lap_completion_timestamp",
         "lap_time_seconds",
         "compound",
         "tyre_life",
         "track_status",
         "is_pit_lap",
         "position",
+        "lap_start_time",
+        "lap_end_time",
     },
-    "drivers": {"session_id", "driver_code", "full_name", "team", "number", "color"},
+    "drivers": {
+        "session_id",
+        "driver_code",
+        "full_name",
+        "team",
+        "number",
+        "color",
+    },
     "weather": {
         "weather_id",
         "session_id",
@@ -155,7 +169,13 @@ ALLOWED_COLUMNS: dict = {
         "rainfall",
         "sample_time",
     },
-    "trackStatus": {"entry_id", "session_id", "time", "track_safety_status", "message"},
+    "trackStatus": {
+        "entry_id",
+        "session_id",
+        "time",
+        "track_safety_status",
+        "message",
+    },
     "results": {
         "session_id",
         "driver_code",
@@ -177,6 +197,22 @@ ALLOWED_COLUMNS: dict = {
         "sector",
         "racing_number",
         "lap",
+    },
+    "live_driver_telemetry": {
+        "session_id",
+        "driver_code",
+        "session_time",
+        "source_of_data",
+        "status",
+        "x_pos",
+        "y_pos",
+        "distance_to_driver_ahead",
+        "gear",
+        "throttle",
+        "brake",
+        "drs",
+        "speed",
+        "rpm",
     },
 }
 
@@ -249,7 +285,6 @@ class DBhandler:
         self.conn.commit()
 
     def _createTables(self, conn: sqlite3.Connection) -> None:
-
         """Runs every CREATE TABLE IF NOT EXISTS on the given connection."""
         cur = conn.cursor()
 
@@ -411,7 +446,7 @@ class DBhandler:
         )
         """)
 
-        # live telemetry (merged car_telemetry and driver_telemetry) this will reduce the amount of obeservations within the db. 
+        # live telemetry (merged car_telemetry and driver_telemetry) this will reduce the amount of obeservations within the db.
         # should help the total file size of the db file
         """
             NOTE: what data do we need in the db?
@@ -460,58 +495,72 @@ class DBhandler:
         """)
 
         conn.commit()
-   
-    # Limiter for the telemetry step will skip _ rows in the telemetry
-    def _insertTelemetry(self, session: Session, session_id: int, step: int = 2) -> None:
-        """
-            _parses data from merged car telemetry and pos telemetry data, then inserts rows into live_driver_telemetry table_
 
-            Args:
-                session (Session): _fastf1 session_
-                session_id (int): _id of session data being inserted into db_
-                step (int): _the step amount for data wanting to be kept_
+    # Limiter for the telemetry step will skip _ rows in the telemetry
+    def _insertTelemetry(
+        self, session: Session, session_id: int, step: int = 2
+    ) -> None:
+        """
+        _parses data from merged car telemetry and pos telemetry data, then inserts rows into live_driver_telemetry table_
+
+        Args:
+            session (Session): _fastf1 session_
+            session_id (int): _id of session data being inserted into db_
+            step (int): _the step amount for data wanting to be kept_
         """
         # connect to the cursor
         conn = self.conn
         cur = conn.cursor()
         # for each driver collect telemetry session.driver is organized by driver_num but our db stores driver abreviation
         for driver_num in session.drivers:
-            # get driver code from driver number 
+            # get driver code from driver number
             driver_code = session.get_driver(driver_num)["Abbreviation"]
-            print(f'fetching telemetry for {driver_num},{driver_code}')
-            # try to merge car data with position data 
-            try: 
-                telem = session.car_data[driver_num].merge_channels(session.pos_data[driver_num])
+            print(f"fetching telemetry for {driver_num},{driver_code}")
+            # try to merge car data with position data
+            try:
+                telem = session.car_data[driver_num].merge_channels(
+                    session.pos_data[driver_num]
+                )
             except Exception:
                 # if there is an issue with merging the data print out a traceback for debugging purposes
                 traceback.print_exc()
-                # don't let the app crash 
+                # don't let the app crash
                 continue
 
             # if x or y is NaN remove that row NOTE: we have to have x and y to plot on the graph
-            telem = telem.dropna(subset=["X","Y"])
-            # limit the amount of rows in the db set to every other row 
+            telem = telem.dropna(subset=["X", "Y"])
+            # limit the amount of rows in the db set to every other row
             telem = telem.iloc[::step]
 
             # create a data frame with the data
-            df = pd.DataFrame({
-                "session_id": session_id,
-                "driver_code": driver_code,
-                "session_time": telem["SessionTime"].dt.total_seconds(),
-                "source": telem["Source"].fillna("unkown source") if "Source" in telem else "No Source Logged",
-                "status": telem["Status"].fillna("unkown driver status") if "Status" in telem else "No Source Logged",
-                "x": telem["X"].astype(float),
-                "y": telem["Y"].astype(float),
-                "ahead": None,   # see note below
-                "gear": telem["nGear"],
-                "throttle": telem["Throttle"],
-                "brake": telem["Brake"].astype(int),
-                "drs": telem["DRS"],
-                "speed": telem["Speed"],
-                "rpm": telem["RPM"],
-            })
+            df = pd.DataFrame(
+                {
+                    "session_id": session_id,
+                    "driver_code": driver_code,
+                    "session_time": telem["SessionTime"].dt.total_seconds(),
+                    "source": telem["Source"].fillna("unkown source")
+                    if "Source" in telem
+                    else "No Source Logged",
+                    "status": telem["Status"].fillna("unkown driver status")
+                    if "Status" in telem
+                    else "No Source Logged",
+                    "x": telem["X"].astype(float),
+                    "y": telem["Y"].astype(float),
+                    "ahead": None,  # see note below
+                    "gear": telem["nGear"],
+                    "throttle": telem["Throttle"],
+                    "brake": telem["Brake"].astype(int),
+                    "drs": telem["DRS"],
+                    "speed": telem["Speed"],
+                    "rpm": telem["RPM"],
+                }
+            )
             # turn it into tuples autofill any NaN values into None, don't add an index
-            dfRow = df.astype(object).where(df.notna(), None).itertuples(index = False, name = None)
+            dfRow = (
+                df.astype(object)
+                .where(df.notna(), None)
+                .itertuples(index=False, name=None)
+            )
             cur.executemany(
                 """INSERT OR IGNORE INTO live_driver_telemetry
                 (session_id, driver_code, session_time, source_of_data, status,
@@ -533,8 +582,8 @@ class DBhandler:
         cur = conn.cursor()
 
         # this creates a property called by session.track_status also
-        session.load(telemetry = True)
-        
+        session.load(telemetry=True)
+
         laps = session.laps.copy()
         weather = session.weather_data.copy()
         results = session.results.copy()  # has driver code, name, team, number, color
@@ -577,7 +626,15 @@ class DBhandler:
         # Reloading a race used to insert its laps/weather/trackStatus rows a
         # second time (those tables have no unique key). Clear this session's old
         # rows first so a reload replaces the data instead of duplicating it.
-        for table in ("laps", "weather", "trackStatus", "results", "live_driver_telemetry", "circuit_corners_data", "raceControlMessages"):
+        for table in (
+            "laps",
+            "weather",
+            "trackStatus",
+            "results",
+            "live_driver_telemetry",
+            "circuit_corners_data",
+            "raceControlMessages",
+        ):
             cur.execute(f"DELETE FROM {table} WHERE session_id = ?", (session_id,))
 
         # Insert drivers
@@ -655,7 +712,7 @@ class DBhandler:
                 ),
             )
         # insert live_driver_telemetry
-        self._insertTelemetry(session = session, session_id= session_id)
+        self._insertTelemetry(session=session, session_id=session_id)
 
         # Insert weather
         for _, row in weather.iterrows():
@@ -721,9 +778,18 @@ class DBhandler:
                 (session_id, corner_number, letter, x_pos, y_pos, angle)
                 VALUES (?,?,?,?,?,?)
                 """,
-                [(session_id, int(circuit["Number"]), letter, float(circuit["X"]), float(circuit["Y"]), float(circuit["Angle"]))],
+                [
+                    (
+                        session_id,
+                        int(circuit["Number"]),
+                        letter,
+                        float(circuit["X"]),
+                        float(circuit["Y"]),
+                        float(circuit["Angle"]),
+                    )
+                ],
             )
-        
+
         # Insert race-control messages
         for _, row in raceControlDF.iterrows():
             cur.execute(
@@ -833,9 +899,7 @@ class DBhandler:
                 "full_name": name,
                 "team": team,
                 "color": (
-                    f"#{color}"
-                    if color and not str(color).startswith("#")
-                    else color
+                    f"#{color}" if color and not str(color).startswith("#") else color
                 ),
                 "grid": grid,
                 "finish": finish,
@@ -871,11 +935,7 @@ class DBhandler:
                 info["laps"].insert(0, 0)
                 info["positions"].insert(0, grid)
 
-        return {
-            code: info
-            for code, info in drivers.items()
-            if info["laps"]
-        }
+        return {code: info for code, info in drivers.items() if info["laps"]}
 
     def getKnownDrivers(self) -> dict[str, str]:
         """Returns a list of every driver that has been recorded in the database
@@ -916,14 +976,16 @@ class DBhandler:
         print("dbhandler.py/_checkNames: Valid access to tables within database")
 
     # NOTE: Flagged for Depreciation
-    def getSessionID(self, tableName: str, year: int, eventName: str, sessionType: str) -> int:
+    def getSessionID(
+        self, tableName: str, year: int, eventName: str, sessionType: str
+    ) -> int:
         """
         _summary_: get the session_id of one row, looked up by entry_id
 
         Returns:
             _type_ int: the session_id, or -1 if the row doesn't exist
         """
-        #self._checkNames(tableName, ("entry_id", "session_id"))
+        # self._checkNames(tableName, ("entry_id", "session_id"))
         cursor = self.conn.cursor()
         cursor.execute(
             f"SELECT session_id FROM {tableName} WHERE year = ? AND event_name = ? AND session_type = ? LIMIT 1",
@@ -1077,14 +1139,15 @@ class DBhandler:
         cursor.execute(
             f"""
                 SELECT {columns} FROM sessions
-            """)
+            """
+        )
         sessionTableDict: list[dict] = []
         # for each row within the list append each to the dict based on their columnNames for keys
         for row in cursor.fetchall():
             rowDict = dict(row)
             rowDict["downloaded"] = True
             sessionTableDict.append(rowDict)
-            
+
         # procecs the sessionTable and make it a list[dicts]
         return sessionTableDict
 
@@ -1099,13 +1162,15 @@ class DBhandler:
             pd.DataFrame: _description_
         """
         return pd.read_sql_query(
-        """
+            """
         SELECT driver_code, session_time, x_pos, y_pos
         FROM live_driver_telemetry
         WHERE session_id = ?
         ORDER BY driver_code, session_time
-        """, self.conn, params=(session_id,),
-    )
+        """,
+            self.conn,
+            params=(session_id,),
+        )
 
     def getFastestLapPositions(self, session_id: int) -> pd.DataFrame:
         row = self.conn.execute(
@@ -1115,7 +1180,8 @@ class DBhandler:
             WHERE session_id = ? AND lap_time_seconds IS NOT NULL AND lap_start_time IS NOT NULL AND lap_end_time IS NOT NULL
             ORDER BY lap_time_seconds ASC LIMIT 1
             """,
-            (session_id,), ).fetchone()
+            (session_id,),
+        ).fetchone()
         if row is None:
             return pd.DataFrame(columns=["X", "Y"])
         driver, startTime, endTime = row
@@ -1126,17 +1192,17 @@ class DBhandler:
             WHERE session_id = ? AND driver_code = ? AND session_time BETWEEN ? AND ?
             ORDER BY session_time
             """,
-            self.conn, params =(session_id, driver, startTime, endTime),
+            self.conn,
+            params=(session_id, driver, startTime, endTime),
         )
 
     def getCircuitRotation(self, session_id: int) -> float:
         row = self.conn.execute(
-            "SELECT track_rotation FROM sessions WHERE session_id = ?",
-        (session_id,)
+            "SELECT track_rotation FROM sessions WHERE session_id = ?", (session_id,)
         ).fetchone()
         return float(row[0]) if row and row[0] is not None else 0.0
 
-    def getCorners(self, session_id:int) -> pd.DataFrame:
+    def getCorners(self, session_id: int) -> pd.DataFrame:
         return pd.read_sql_query(
             """
             SELECT corner_number, letter, x_pos, y_pos, angle
@@ -1144,13 +1210,15 @@ class DBhandler:
             WHERE session_id = ?
             ORDER BY corner_number
             """,
-            self.conn, params = (session_id, ),
+            self.conn,
+            params=(session_id,),
         )
-    
-    def __deleteSessionData(self, session_id:int) -> None:
-        """ 
-            _delete session data from the database to keep the total size of application down_
+
+    def __deleteSessionData(self, session_id: int) -> None:
         """
+        _delete session data from the database to keep the total size of application down_
+        """
+
     # NOTE: Flagged for depreciation once moved to trackStatusVM
     def _getNextStatusChange(
         self, sessionID: int, entryID: int, time: float
@@ -1275,11 +1343,73 @@ class DBhandler:
             WHERE session_id = ? 
             ORDER BY time ASC, entry_id ASC 
             LIMIT 1
-            """, 
+            """,
             (session_id,),
         )
         row = cursor.fetchone()
         return row[0] if row is not None else -1
+
+    def getMetricSeries(
+        self, spec: MetricSpec, session_id: int, driver: str | None = None
+    ) -> pd.DataFrame:
+        """Generic series for a given spec. The x-axis is always in time (seconds).
+
+        Args:
+            spec (MetricSpec): The MetricSpec object to use
+            session_id (int): What session to generate graphs for
+            driver (str | None, optional): The driver to grab objects for. Defaults to None.
+
+        Returns:
+            pd.DataFrame: A dataframe object to graph over
+        """
+        cols = (spec.time_column, spec.column)
+        if spec.per_driver:
+            cols += (spec.driver_column,)
+        self._checkNames(spec.table, cols)
+
+        query = (
+            f"SELECT {spec.time_column} AS t, {spec.column} AS y "
+            f"FROM {spec.table} "
+            f"WHERE session_id = ? AND {spec.column} IS NOT NULL AND {spec.time_column} IS NOT NULL"
+        )
+        params: list = [session_id]
+        if spec.per_driver and driver is not None:
+            query += f" AND {spec.driver_column} = ?"
+            params.append(driver)
+        query += f" ORDER BY {spec.time_column}"
+
+        df = pd.read_sql_query(query, self.conn, params=params)
+        if spec.time_is_text and not df.empty:
+            df["t"] = pd.to_timedelta(df["t"]).dt.total_seconds()
+        return df
+
+    def getSessionDrivers(self, session_id: int) -> list[tuple[str, str | None]]:
+        """Gets a list of drivers and colors for those drivers.
+
+        Args:
+            session_id (int): What session to generate graphs for
+
+        Returns:
+            list[tuple[str, str | None]]: A list of form [(Driver Code, Color), ...] where Color **CAN** be None.
+        """
+
+        rows = self.conn.execute(
+            """
+            SELECT d.driver_code, d.color
+            FROM drivers d
+            LEFT JOIN results r
+                ON r.session_id = d.session_id AND r.driver_code = d.driver_code
+            WHERE d.session_id = ?
+            ORDER BY r.finish_position IS NULL, r.finish_position
+            """,
+            (session_id,),
+        ).fetchall()
+
+        return [
+            (code, f"#{c}" if c and not str(c).startswith("#") else c)
+            for code, c in rows
+        ]
+
 
 def main():
     dbHandler = DBhandler()

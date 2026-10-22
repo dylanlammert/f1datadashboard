@@ -1,10 +1,10 @@
-
 """Automated tests for the telemetry-based fuel graph."""
 
 import unittest
 from unittest.mock import patch
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
@@ -17,12 +17,13 @@ from graphs.fuel_telemetry import (
 
 
 class FuelTelemetryTests(unittest.TestCase):
-
     def test_full_throttle(self):
-        data = pd.DataFrame({
-            "session_time": [0, 1, 2],
-            "throttle": [100, 100, 100],
-        })
+        data = pd.DataFrame(
+            {
+                "session_time": [0, 1, 2],
+                "throttle": [100, 100, 100],
+            }
+        )
 
         result = estimate_remaining_fuel(data)
 
@@ -34,10 +35,12 @@ class FuelTelemetryTests(unittest.TestCase):
         )
 
     def test_variable_time_intervals(self):
-        data = pd.DataFrame({
-            "session_time": [0, 2, 5],
-            "throttle": [0, 50, 100],
-        })
+        data = pd.DataFrame(
+            {
+                "session_time": [0, 2, 5],
+                "throttle": [0, 50, 100],
+            }
+        )
 
         result = estimate_remaining_fuel(data)
 
@@ -52,10 +55,12 @@ class FuelTelemetryTests(unittest.TestCase):
         )
 
     def test_zero_throttle(self):
-        data = pd.DataFrame({
-            "session_time": [0, 1, 2],
-            "throttle": [0, 0, 0],
-        })
+        data = pd.DataFrame(
+            {
+                "session_time": [0, 1, 2],
+                "throttle": [0, 0, 0],
+            }
+        )
 
         result = estimate_remaining_fuel(data)
 
@@ -65,36 +70,44 @@ class FuelTelemetryTests(unittest.TestCase):
         )
 
     def test_invalid_throttle_rejected(self):
-        data = pd.DataFrame({
-            "session_time": [0, 1],
-            "throttle": [50, 120],
-        })
+        data = pd.DataFrame(
+            {
+                "session_time": [0, 1],
+                "throttle": [50, 120],
+            }
+        )
 
         with self.assertRaises(ValueError):
             estimate_remaining_fuel(data)
 
     def test_missing_telemetry_rejected(self):
-        data = pd.DataFrame({
-            "session_time": [0, 1],
-        })
+        data = pd.DataFrame(
+            {
+                "session_time": [0, 1],
+            }
+        )
 
         with self.assertRaises(ValueError):
             estimate_remaining_fuel(data)
 
     def test_large_telemetry_gap_rejected(self):
-        data = pd.DataFrame({
-            "session_time": [0, 11],
-            "throttle": [50, 50],
-        })
+        data = pd.DataFrame(
+            {
+                "session_time": [0, 11],
+                "throttle": [50, 50],
+            }
+        )
 
         with self.assertRaises(ValueError):
             estimate_remaining_fuel(data)
 
     def test_fuel_never_negative(self):
-        data = pd.DataFrame({
-            "session_time": [0, 10],
-            "throttle": [100, 100],
-        })
+        data = pd.DataFrame(
+            {
+                "session_time": [0, 10],
+                "throttle": [100, 100],
+            }
+        )
 
         result = estimate_remaining_fuel(
             data,
@@ -107,10 +120,12 @@ class FuelTelemetryTests(unittest.TestCase):
         )
 
     def test_graph_generation(self):
-        data = pd.DataFrame({
-            "session_time": [0, 1, 2, 3],
-            "throttle": [0, 50, 100, 75],
-        })
+        data = pd.DataFrame(
+            {
+                "session_time": [0, 1, 2, 3],
+                "throttle": [0, 50, 100, 75],
+            }
+        )
 
         with patch(
             "graphs.fuel_telemetry.load_driver_telemetry",

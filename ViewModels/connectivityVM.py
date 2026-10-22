@@ -5,14 +5,16 @@ from PySide6.QtCore import QObject, Signal
     NOTE: 
         - may need to run this on a thread    
 """
+
+
 class ConnectivityVM(QObject):
-    #signals
+    # signals
     __onlineChanged = Signal(bool)
 
     @property
     def onlineChanged(self):
         return self.__onlineChanged
-    
+
     def __init__(self):
         super().__init__()
         self.isOnline: bool | None = None
@@ -22,7 +24,7 @@ class ConnectivityVM(QObject):
             self._info.reachabilityChanged.connect(self._onReachability)
             self._onReachability(self._info.reachability())
         """
-        
+
     def setup(self):
         if QNetworkInformation.loadDefaultBackend():
             self._info = QNetworkInformation.instance()
@@ -47,6 +49,7 @@ class ConnectivityVM(QObject):
 def __main():
     connectionTest = ConnectivityVM()
     connectionTest.setup()
+
 
 if __name__ == "__main__":
     __main()

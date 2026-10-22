@@ -1,4 +1,3 @@
-
 """Compare tyre performance across F1 seasons.
 
 This analysis measures observed changes in tyre slowdown.
@@ -46,10 +45,7 @@ def compare_seasonal_tyre_wear(db_path=DB_PATH, min_laps=3):
         # Compare relatively fresh and older tyres.
         clean = clean[
             clean["compound"].isin(["SOFT", "MEDIUM", "HARD"])
-            & (
-                clean["tyre_life"].between(3, 5)
-                | clean["tyre_life"].between(12, 15)
-            )
+            & (clean["tyre_life"].between(3, 5) | clean["tyre_life"].between(12, 15))
         ].copy()
 
         if clean.empty:
@@ -89,9 +85,9 @@ def compare_seasonal_tyre_wear(db_path=DB_PATH, min_laps=3):
     data = pd.concat(frames, ignore_index=True)
 
     grouped = (
-        data.groupby(
-            ["event_name", "year", "driver", "compound", "age_group"]
-        )["corrected"]
+        data.groupby(["event_name", "year", "driver", "compound", "age_group"])[
+            "corrected"
+        ]
         .agg(["count", "median"])
         .reset_index()
     )
@@ -111,9 +107,7 @@ def compare_seasonal_tyre_wear(db_path=DB_PATH, min_laps=3):
     paired_ages = paired_ages.dropna(subset=["fresh", "older"])
 
     # Positive means older tyres are slower than fresh tyres.
-    paired_ages["slowdown"] = (
-        paired_ages["older"] - paired_ages["fresh"]
-    )
+    paired_ages["slowdown"] = paired_ages["older"] - paired_ages["fresh"]
 
     seasons = paired_ages["slowdown"].unstack("year")
 
@@ -129,10 +123,7 @@ def compare_seasonal_tyre_wear(db_path=DB_PATH, min_laps=3):
         }
     )
 
-    seasons["change_s"] = (
-        seasons["slowdown_2024_s"]
-        - seasons["slowdown_2023_s"]
-    )
+    seasons["change_s"] = seasons["slowdown_2024_s"] - seasons["slowdown_2023_s"]
 
     return (
         seasons.reset_index()[columns]

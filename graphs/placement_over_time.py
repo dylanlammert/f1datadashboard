@@ -32,12 +32,8 @@ from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 import matplotlib.patheffects as pe
 
-# colours match the app's dark theme (main.py backgroundColor = #1A1A1A)
-BACKGROUND = "#1A1A1A"
-CONTEXT_LINE = "#4E4E58"  # every non-highlighted driver
-GRID_LINE = "#2C2C34"
-TEXT = "#ECECEC"
-MUTED_TEXT = "#9A9AA6"
+# ? Replaced hard-coded constants with a theme file so all graphs can match
+from graphs.themes import BACKGROUND, CONTEXT_LINE, GRID_LINE, TEXT, MUTED_TEXT
 
 
 def default_highlight(lapPositions: dict[str, dict], count: int = 3) -> list[str]:

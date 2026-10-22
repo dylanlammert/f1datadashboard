@@ -2,6 +2,8 @@ from PySide6.QtCore import QObject, Signal
 from Services.dbhandler import DBhandler
 from ViewModels.raceSimulationVM import PlayControlsVM
 from ViewModels.sessionSelectorVM import SessionSelectorVM
+
+
 class TrackStatusVM(QObject):
     """
     TODO:
@@ -13,8 +15,8 @@ class TrackStatusVM(QObject):
     """
 
     # Signals
-    __updatedTrackSafety = Signal(str)  
-    __updatedTrackSurface = Signal(str)  
+    __updatedTrackSafety = Signal(str)
+    __updatedTrackSurface = Signal(str)
 
     @property
     def updatedTrackSafety(self):
@@ -24,7 +26,9 @@ class TrackStatusVM(QObject):
     def updatedTrackSurface(self):
         return self.__updatedTrackSurface
 
-    def __init__(self, playControlsVM: PlayControlsVM, sessionSelectorVM: SessionSelectorVM):
+    def __init__(
+        self, playControlsVM: PlayControlsVM, sessionSelectorVM: SessionSelectorVM
+    ):
         super().__init__()
         # on init set Signals and class vars to normal
         self.currentTrackSafety: str = "session data not loaded..."
@@ -33,7 +37,7 @@ class TrackStatusVM(QObject):
         self.currentIndex: int = 1
         # NOTE: flagged for depreciation once playcontrolsVM updates all viewModels
         self.currentTime: float = 0.00
-        # bounds for the current status 
+        # bounds for the current status
         self.lastStatusChangeTime: float | None = 0.0
         self.nextStatusChangeTime: float | None = 0.0
         self.playControlsVM = playControlsVM
@@ -50,16 +54,20 @@ class TrackStatusVM(QObject):
     def _onCurrentTimeChange(self, newCurrentTime):
         """_a function that gets called whenever the clock in playControlsVM gets incremented.
             makes a call to fetchSafetyStatus if the current time is ouside of current status bounds_
-            
+
         Args:
-            newCurrentTime (_float_): _This is the currentTime that was sent from the updatedTime signal 
+            newCurrentTime (_float_): _This is the currentTime that was sent from the updatedTime signal
                                        within the playControlsVM_
         """
         # if newCurrentTime < self.lastStatusChangeTime then the scrubber has been used to go back in time
-        if((newCurrentTime < self.lastStatusChangeTime) or (newCurrentTime >= self.nextStatusChangeTime)):
+        if (newCurrentTime < self.lastStatusChangeTime) or (
+            newCurrentTime >= self.nextStatusChangeTime
+        ):
             # fetch safety status based off of time
-            print(f"trackStatusVM.py/TrackStatusVM/_onCurrentTimeChange: Fetch status via time newCurrentTime: {newCurrentTime}, lastStatusChangeTime: {self.lastStatusChangeTime}")
-            self.fetchSafetyStatus(searchData= newCurrentTime, searchBy= "time")
+            print(
+                f"trackStatusVM.py/TrackStatusVM/_onCurrentTimeChange: Fetch status via time newCurrentTime: {newCurrentTime}, lastStatusChangeTime: {self.lastStatusChangeTime}"
+            )
+            self.fetchSafetyStatus(searchData=newCurrentTime, searchBy="time")
             # realistically I should search by time. If the person searches via entry_id but they are not at the next entry then time is more acurate. It would basically have to update multiple times
 
     def _getNextChangeTime(self, entryID: int) -> float:
@@ -72,14 +80,20 @@ class TrackStatusVM(QObject):
             _float_: _time of next status change in seconds_
             _float_: _float representation of infinity if there is no next row, this can be used as an end-flag for sessionID_
         """
-        row = self.dbHandler.getDataFromTable(tableName= "trackStatus", searchBy="entry_id", searchData= entryID + 1, attributeNameTuple=("time",), sessionID= self.sessionSelectorVM.currentSessionID)
-        if(row != None):
+        row = self.dbHandler.getDataFromTable(
+            tableName="trackStatus",
+            searchBy="entry_id",
+            searchData=entryID + 1,
+            attributeNameTuple=("time",),
+            sessionID=self.sessionSelectorVM.currentSessionID,
+        )
+        if row is not None:
             # next change time for track status
             return row[0]
         else:
             # no more trackStatus changes within the session
             return float("inf")
-        
+
     def _setSurfaceStatus(self, newStatus: str):
         """_helper function to set the local surface status and also send a signal out to other VMs_
 
@@ -105,7 +119,7 @@ class TrackStatusVM(QObject):
             self.updatedTrackSafety.emit(newStatus)
 
     def getSafetyStatus(self):
-        """ _helper function that grabs safety status from local variable_
+        """_helper function that grabs safety status from local variable_
 
         Returns:
             _str_: _current safety status_
@@ -122,39 +136,45 @@ class TrackStatusVM(QObject):
 
     def fetchSafetyStatus(self, searchData, searchBy):
         """_grabs data from the dbHandler and calls to set the safety status_
-        
+
         Args:
             searchData (_float | int_): _the value that is being used to search_
-            searchBy (_str_): _string value of the manner being searched_        
+            searchBy (_str_): _string value of the manner being searched_
         """
-        #data needed from trackStatus Table
+        # data needed from trackStatus Table
         columns = ("entry_id", "session_id", "time", "track_safety_status", "message")
         # fetch status from DB
-        #creates a tuple to search through
-        newStatus = self.dbHandler.getDataFromTable(tableName= "trackStatus", searchBy= searchBy, searchData= searchData, attributeNameTuple= columns, sessionID= self.sessionSelectorVM.currentSessionID)
+        # creates a tuple to search through
+        newStatus = self.dbHandler.getDataFromTable(
+            tableName="trackStatus",
+            searchBy=searchBy,
+            searchData=searchData,
+            attributeNameTuple=columns,
+            sessionID=self.sessionSelectorVM.currentSessionID,
+        )
 
         # ! newStatus being None is causing a CTD. This needs to be handled elegantly in the future.
         """
         if newStatus is None:
             return None
         """
-        
 
         # set data to idle
-        if(newStatus == None):
+        if newStatus is None:
             self.setSafetyStatus("Idle")
             self.lastStatusChangeTime = 0.00
-            self.currentIndex = self.dbHandler.getFirstIndexOfTrackStatus() # start of session 
+            self.currentIndex = (
+                self.dbHandler.getFirstIndexOfTrackStatus()
+            )  # start of session
             self.nextStatusChangeTime = self._getNextChangeTime(self.currentIndex)
         else:
-            #grab next change time from table status
+            # grab next change time from table status
             self.currentIndex = newStatus[0]
             self.nextStatusChangeTime = self._getNextChangeTime(self.currentIndex)
             self.lastStatusChangeTime = newStatus[2]
             self.setSafetyStatus(newStatus[4])
             self.currentIndex += self.currentIndex
 
-    
     def fetchSurfaceStatus(self):
         # fetch status from DB
         # newStatus = dbHandler.getSafetyStatus()

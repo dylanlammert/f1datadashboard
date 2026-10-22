@@ -12,6 +12,7 @@ from fastf1.events import EventSchedule
 
 fastf1.logger.set_log_level("DEBUG")
 
+
 def get_schedule_by_year(year: int, testing: bool = False) -> EventSchedule:
     """When passed a year as an int, will return the name of the events.
     Should be called to gain a list of events in a year
@@ -39,10 +40,12 @@ def get_race(year: int, event_name: str, type: str = "R") -> int | None:
     handler = DBhandler()
     new_session_id = None
     try:
-        new_session_id = handler.loadSessionIntoDB(fastf1.get_session(year, event_name, type))
+        new_session_id = handler.loadSessionIntoDB(
+            fastf1.get_session(year, event_name, type)
+        )
     finally:
         handler.close()
-    
+
     return new_session_id
 
 
@@ -57,6 +60,7 @@ def _get_event_names(schedule: EventSchedule) -> pd.Series | None:
         _type_: _description_
     """
     return schedule.get("EventName")
+
 
 def _main():
     get_race(2026, "Japanese Grand Prix", "R")

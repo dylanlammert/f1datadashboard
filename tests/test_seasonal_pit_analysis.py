@@ -1,4 +1,4 @@
-﻿"""Automated tests for seasonal tyre performance."""
+"""Automated tests for seasonal tyre performance."""
 
 import unittest
 from unittest.mock import patch
@@ -9,7 +9,6 @@ from ML.seasonal_pit_analysis import compare_seasonal_tyre_wear
 
 
 class SeasonalPitAnalysisTests(unittest.TestCase):
-
     def setUp(self):
         self.sessions = pd.DataFrame(
             [
@@ -27,15 +26,17 @@ class SeasonalPitAnalysisTests(unittest.TestCase):
 
     @staticmethod
     def make_laps(fresh, older):
-        laps = pd.DataFrame([
-            {
-                "driver": "VER",
-                "compound": "HARD",
-                "tyre_life": age,
-                "corrected": fresh if age <= 5 else older,
-            }
-            for age in (3, 4, 5, 12, 13, 14)
-        ])
+        laps = pd.DataFrame(
+            [
+                {
+                    "driver": "VER",
+                    "compound": "HARD",
+                    "tyre_life": age,
+                    "corrected": fresh if age <= 5 else older,
+                }
+                for age in (3, 4, 5, 12, 13, 14)
+            ]
+        )
         laps.attrs["any_rainfall"] = False
         return laps
 

@@ -1,4 +1,3 @@
-
 """Telemetry-based estimated fuel consumption graph.
 
 Uses throttle readings and elapsed time from FastF1 telemetry.
@@ -28,7 +27,9 @@ MAX_FUEL_FLOW_KG_S = 1.0 / 36.0
 MAX_SAMPLE_GAP_SECONDS = 10.0
 
 
-def load_driver_telemetry(session_id: int, driver_code: str, db_path=DB_PATH) -> pd.DataFrame:
+def load_driver_telemetry(
+    session_id: int, driver_code: str, db_path=DB_PATH
+) -> pd.DataFrame:
     """Load throttle readings for one driver in a selected session.
 
     Returns session timestamps and throttle values from the telemetry table.
@@ -52,8 +53,7 @@ def load_driver_telemetry(session_id: int, driver_code: str, db_path=DB_PATH) ->
 
         if not table_exists:
             raise ValueError(
-                "Telemetry table is missing. "
-                "Dylan's telemetry integration is required."
+                "Telemetry table is missing. Dylan's telemetry integration is required."
             )
 
         # Parameterized SQL prevents user-provided values from altering the query.
@@ -125,8 +125,7 @@ def estimate_remaining_fuel(
     # Large telemetry gaps would make the fuel estimate unreliable.
     if (data["delta_time_s"] > MAX_SAMPLE_GAP_SECONDS).any():
         raise ValueError(
-            "Telemetry gap exceeds 10 seconds. "
-            "Cannot estimate across missing data."
+            "Telemetry gap exceeds 10 seconds. Cannot estimate across missing data."
         )
 
     # Normalize throttle from 0-100 percent to a 0-1 fraction.
@@ -134,18 +133,14 @@ def estimate_remaining_fuel(
 
     # Estimate instantaneous fuel flow using the existing simplified model.
     # Fuel flow (kg/s) = (normalized throttle ** 2) / 36.
-    data["fuel_rate_kg_s"] = (throttle_fraction ** 2) * MAX_FUEL_FLOW_KG_S
+    data["fuel_rate_kg_s"] = (throttle_fraction**2) * MAX_FUEL_FLOW_KG_S
 
     # Use the average of two neighboring fuel rates (trapezoidal integration)
     # instead of assuming a constant rate over the entire interval.
-    average_rate = (
-        data["fuel_rate_kg_s"] + data["fuel_rate_kg_s"].shift(1)
-    ) / 2.0
+    average_rate = (data["fuel_rate_kg_s"] + data["fuel_rate_kg_s"].shift(1)) / 2.0
 
     # Fuel consumed in each interval = average flow rate * elapsed seconds.
-    data["fuel_used_kg"] = (
-        average_rate * data["delta_time_s"]
-    ).fillna(0.0)
+    data["fuel_used_kg"] = (average_rate * data["delta_time_s"]).fillna(0.0)
 
     # Add interval consumption to estimate the total fuel used so far.
     data["cumulative_fuel_used_kg"] = data["fuel_used_kg"].cumsum()
@@ -157,16 +152,13 @@ def estimate_remaining_fuel(
     ).clip(lower=0.0)
 
     # Start the graph timeline at zero, regardless of session timestamp.
-    data["elapsed_seconds"] = (
-        data["session_time"] - data["session_time"].iloc[0]
-    )
+    data["elapsed_seconds"] = data["session_time"] - data["session_time"].iloc[0]
 
     return data
 
 
 def plot_estimated_fuel(
-    session_id: int, driver_code: str,
-    initial_fuel_kg: float = 110.0, db_path=DB_PATH
+    session_id: int, driver_code: str, initial_fuel_kg: float = 110.0, db_path=DB_PATH
 ):
     """Generate a line graph of estimated remaining fuel over time."""
     # Load telemetry for the selected driver, then estimate fuel remaining.

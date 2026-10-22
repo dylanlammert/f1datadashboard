@@ -6,8 +6,7 @@ import typing
 
 class DriverStatScraper:
     def __init__(self):
-        """Generic initialization for the stat scraper. Instantiates a rate-limited session and sets the headers of that session.
-        """
+        """Generic initialization for the stat scraper. Instantiates a rate-limited session and sets the headers of that session."""
         self.session = LimiterSession(per_second=2, per_minute=60)
         self.session.headers.update(
             {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}

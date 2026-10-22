@@ -63,9 +63,7 @@ def get_pit_stop_durations(
     data = data.sort_values(["Driver", "LapNumber"])
     data["NextPitOutTime"] = data.groupby("Driver")["PitOutTime"].shift(-1)
 
-    stops = data[
-        data["PitInTime"].notna() & data["NextPitOutTime"].notna()
-    ].copy()
+    stops = data[data["PitInTime"].notna() & data["NextPitOutTime"].notna()].copy()
 
     stops["PitDurationSeconds"] = (
         stops["NextPitOutTime"] - stops["PitInTime"]
@@ -94,9 +92,7 @@ def get_pit_stop_durations(
     return result.reset_index(drop=True)
 
 
-def get_driver_pit_time_at(
-    laps: pd.DataFrame, driver: str, current_time
-) -> float:
+def get_driver_pit_time_at(laps: pd.DataFrame, driver: str, current_time) -> float:
     """Return how many seconds the driver has spent in the current pit visit.
 
     Args:

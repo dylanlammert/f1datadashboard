@@ -5,6 +5,7 @@ from Services.dbhandler import DBhandler
 from PySide6.QtGui import QPixmap, QPainter, QPainterPath
 from bs4 import BeautifulSoup
 
+
 class ImageWorkerSignals(QObject):
     # ? Private access variable, the double underscore should prevent use outside of the class unless through the property.
     __finished = Signal(QPixmap)
@@ -13,9 +14,13 @@ class ImageWorkerSignals(QObject):
     def finished_signal(self):
         return self.__finished
 
+
 class ImageWorker(QRunnable):
     """Worker object to edit image on a second thread"""
-    def __init__(self, scraper: DriverStatScraper, soup: BeautifulSoup, size: int = 100):
+
+    def __init__(
+        self, scraper: DriverStatScraper, soup: BeautifulSoup, size: int = 100
+    ):
         super().__init__()
         self.scraper = scraper
         self.soup = soup
@@ -31,9 +36,10 @@ class ImageWorker(QRunnable):
             pixmap = QPixmap("images/Driver_Not_found.jpg")
 
         scaled = pixmap.scaled(
-            self.size, self.size,
+            self.size,
+            self.size,
             Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-            Qt.TransformationMode.SmoothTransformation
+            Qt.TransformationMode.SmoothTransformation,
         )
         canvas = QPixmap(self.size, self.size)
         canvas.fill(Qt.GlobalColor.transparent)
@@ -50,8 +56,10 @@ class ImageWorker(QRunnable):
 
         self.signals.finished_signal.emit(canvas)
 
+
 class DriverProfilesViewModel(QObject):
     """Master driver profile VM object"""
+
     # ? Private signals and properties to read those signals externally
     __stats_loaded = Signal(dict)
     __bio_loaded = Signal(str)
@@ -133,7 +141,7 @@ class DriverProfilesViewModel(QObject):
             str: The biography of the driver
         """
         return self.scraper.fetch_driver_bio(soup)
-    
+
     def get_formatted_placements(
         self, placement_history: list[int], location_history: list[str]
     ) -> list[tuple[str, str]]:
@@ -208,7 +216,7 @@ class DriverProfilesViewModel(QObject):
         self.stats_changed.emit(career_stats)
         self.bio_changed.emit(bio_text)
         self.name_changed.emit(_driver_display_name)
-        
+
         worker = ImageWorker(self.scraper, soup)
         worker.signals.finished_signal.connect(self.img_changed.emit)
 
@@ -244,7 +252,7 @@ class DriverProfilesViewModel(QObject):
         worker = ImageWorker(self.scraper, soup, size=60)
         worker.signals.finished_signal.connect(self.img_b_changed.emit)
         self.thread_pool.start(worker)
-    
+
     # Helper Methods
     def _get_known_drivers(self) -> dict[str, str]:
         """Helper function for `get_driver_names()` and `get_driver_codes()`
@@ -284,6 +292,7 @@ class DriverProfilesViewModel(QObject):
 
         return data[scope]
 
+
 def _main():
     vm_test = DriverProfilesViewModel()
     data = vm_test.get_driver_codes()
@@ -292,6 +301,7 @@ def _main():
     print(data)
 
     return 0
+
 
 if __name__ == "__main__":
     _main()

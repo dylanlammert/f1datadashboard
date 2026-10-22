@@ -3,10 +3,9 @@
 # from ViewModels.trackStatusVM import TrackStatusVM
 
 # import things needed for graphs
-import matplotlib.pyplot as plt
 import numpy as np
-#from UI.Theme import theme
-import fastf1
+
+# from UI.Theme import theme
 import pandas as pd
 from UI.Theme import theme
 from matplotlib.figure import Figure
@@ -22,11 +21,12 @@ from Services.dbhandler import DBhandler
         - if offline only refer to the db for data
 """
 
+
 class SimulationCanvas(FigureCanvasQTAgg):
-    def __init__(self, sessionSelectorVM : SessionSelectorVM):
+    def __init__(self, sessionSelectorVM: SessionSelectorVM):
         # initialize the figure to place the simulated race
-        self.figure = Figure(facecolor = theme.background)
-        self.ax = self.figure.add_axes([0,0,1,1])
+        self.figure = Figure(facecolor=theme.background)
+        self.ax = self.figure.add_axes([0, 0, 1, 1])
         self.drivers: list
         # share memory location of the sessionSelectorVM
         self.sessionSelectorVM = sessionSelectorVM
@@ -37,20 +37,19 @@ class SimulationCanvas(FigureCanvasQTAgg):
         self.ax.set_aspect("equal", adjustable="datalim")
         self.ax.set_facecolor("none")
         # driver_code, {x,y datat}
-        self.driverGPSPos: dict[str , pd.DataFrame] = {}
+        self.driverGPSPos: dict[str, pd.DataFrame] = {}
         """
         for spine in self.ax.spines.values():
             spine.set_visible(False)
         """
         self.ax.margins(0.03)
         self.sessionSelectorVM.currentSessionIDChanged.connect(self.drawTrackOutline)
-        #self.loadDriverGPSPos()
-        #print(f" VER gps pos data frame \n {self.getDriverGPSPos(abbr = "VER")}")
+        # self.loadDriverGPSPos()
+        # print(f" VER gps pos data frame \n {self.getDriverGPSPos(abbr = "VER")}")
 
     def onSessionChanged(self, session_id: int):
-        """_when session is changed load drivers GPS data into mem and draw the track outline for the race_
-        """
-        self.loadDriverGPSPos(session_id= session_id)
+        """_when session is changed load drivers GPS data into mem and draw the track outline for the race_"""
+        self.loadDriverGPSPos(session_id=session_id)
 
     def getDriverGPSPos(self, abbr: str) -> pd.DataFrame | None:
         """_test to insure driver data was loaded into driverGPSPos dict_
@@ -72,8 +71,8 @@ class SimulationCanvas(FigureCanvasQTAgg):
         """
 
         session: pd.DataFrame
-        #session = fastf1.get_session(year, event, sessionType)
-        #session.load(telemetry=True, laps=True, weather=False, messages=False)
+        # session = fastf1.get_session(year, event, sessionType)
+        # session.load(telemetry=True, laps=True, weather=False, messages=False)
         session = self.dbHandler.getDataFromTable()
         for driverNumber in session.drivers:
             abbr = session.get_driver(driverNumber)["Abbreviation"]
@@ -95,7 +94,7 @@ class SimulationCanvas(FigureCanvasQTAgg):
         self.ax.set_aspect("equal")
         self.ax.axis("off")
 
-        fastestLap: pd.DataFrame= self.dbHandler.getFastestLapPositions(session_id)
+        fastestLap: pd.DataFrame = self.dbHandler.getFastestLapPositions(session_id)
         circuitCornerInfo: pd.DataFrame = self.dbHandler.getCorners(session_id)
         circuitRotation: float = self.dbHandler.getCircuitRotation(session_id)
 
@@ -105,7 +104,7 @@ class SimulationCanvas(FigureCanvasQTAgg):
             return
 
         # lap = session.laps.pick_fastest()
-        #print(pos.columns)
+        # print(pos.columns)
         # circuit_info = session.get_circuit_info()
         # Get an array of shape [n, 2] where n is the number of points and the second
         # axis is x and y.
@@ -119,48 +118,59 @@ class SimulationCanvas(FigureCanvasQTAgg):
         self.ax.plot(rotated_track[:, 0], rotated_track[:, 1])
         offset_vector = [500, 0]  # offset length is chosen arbitrarily to 'look good'
 
-# Iterate over all corners.
+        # Iterate over all corners.
         for _, corner in circuitCornerInfo.iterrows():
             # Create a string from corner number and letter
             txt = f"{corner['corner_number']}{corner['letter']}"
 
             # Convert the angle from degrees to radian.
-            offset_angle = corner['angle'] / 180 * np.pi
+            offset_angle = corner["angle"] / 180 * np.pi
 
             # Rotate the offset vector so that it points sideways from the track.
             offset_x, offset_y = self.rotate(offset_vector, angle=offset_angle)
 
             # Add the offset to the position of the corner
-            text_x = corner['x_pos'] + offset_x
-            text_y = corner['y_pos'] + offset_y
+            text_x = corner["x_pos"] + offset_x
+            text_y = corner["y_pos"] + offset_y
 
             # Rotate the text position equivalently to the rest of the track map
             text_x, text_y = self.rotate([text_x, text_y], angle=track_angle)
 
             # Rotate the center of the corner equivalently to the rest of the track map
-            track_x, track_y = self.rotate([corner['x_pos'], corner['y_pos']], angle=track_angle)
+            track_x, track_y = self.rotate(
+                [corner["x_pos"], corner["y_pos"]], angle=track_angle
+            )
 
             # Draw a circle next to the track.
-            self.ax.scatter(text_x, text_y, color='grey', s=140)
+            self.ax.scatter(text_x, text_y, color="grey", s=140)
 
             # Draw a line from the track to this circle.
-            self.ax.plot([track_x, text_x], [track_y, text_y], color='grey')
+            self.ax.plot([track_x, text_x], [track_y, text_y], color="grey")
 
             # Finally, print the corner number inside the circle.
-            self.ax.text(text_x, text_y, txt,
-                    va='center_baseline', ha='center', size='small', color='white')
-        
+            self.ax.text(
+                text_x,
+                text_y,
+                txt,
+                va="center_baseline",
+                ha="center",
+                size="small",
+                color="white",
+            )
+
         # run outside of the loop
-        #plt.title(session.event['Location'])
+        # plt.title(session.event['Location'])
         # plt.show()
         self.ax.relim()
         self.ax.autoscale_view()
         self.draw_idle()
 
     def rotate(self, xy, *, angle):
-        rot_mat = np.array([[np.cos(angle), np.sin(angle)],
-                            [-np.sin(angle), np.cos(angle)]])
+        rot_mat = np.array(
+            [[np.cos(angle), np.sin(angle)], [-np.sin(angle), np.cos(angle)]]
+        )
         return np.matmul(xy, rot_mat)
+
 
 if __name__ == "__main__":
     simulation = SimulationCanvas()
