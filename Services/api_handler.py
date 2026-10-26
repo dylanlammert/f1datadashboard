@@ -4,6 +4,7 @@ import fastf1
 from Services.dbhandler import DBhandler
 import pandas as pd
 from fastf1.events import EventSchedule
+from PySide6.QtCore import QObject, Signal, QRunnable
 
 """
     TODO: 
@@ -11,6 +12,28 @@ from fastf1.events import EventSchedule
 """
 
 fastf1.logger.set_log_level("DEBUG")
+
+class APIWorkerSignal(QObject):
+    __finished = Signal(int)
+
+    @property
+    def finished_signal(self):
+        return self.__finished
+
+# ? To run, use:
+# ?         worker = GetRaceWorker(year, event_name, type)
+# ?         worker.signal.finished_signal.connect(self.finished_signal.emit)
+# ?         self.thread_pool.start(worker)
+class GetRaceWorker(QRunnable):
+    def __init__(self, year: int, event_name: str, type: str = "R"):
+        self.year = year
+        self.event_name = event_name
+        self.type = type
+        self.signal = APIWorkerSignal()
+
+    def run(self):
+        session_id = get_race(self.year, self.event_name, self.type)
+        self.signal.finished_signal.emit(session_id)
 
 
 def get_schedule_by_year(year: int, testing: bool = False) -> EventSchedule:
