@@ -26,6 +26,7 @@ class APIWorkerSignal(QObject):
 # ?         self.thread_pool.start(worker)
 class GetRaceWorker(QRunnable):
     def __init__(self, year: int, event_name: str, type: str = "R"):
+        super().__init__()
         self.year = year
         self.event_name = event_name
         self.type = type
