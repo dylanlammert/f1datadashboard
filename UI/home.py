@@ -1,6 +1,6 @@
 # basic test application
 from PySide6.QtCore import Qt
-from UI.Theme import theme
+from UI.Theme import theme, fontStyles
 from ViewModels.raceSimulationVM import PlayControlsVM
 from ViewModels.trackStatusVM import TrackStatusVM
 from ViewModels.simulationGraphVM import SimulationCanvas
@@ -17,12 +17,14 @@ from PySide6.QtWidgets import (
     QComboBox,
     QPushButton,
     QStyleFactory,
+    QProgressBar,
 )
 
 layoutColor: str = theme.info
 gridMargin: int = 12
 padding: int = 12
 borderRadius: int = 20
+labelPadding: int = 2
 
 """
     TODO: 
@@ -102,6 +104,11 @@ class TrackStatusCard(Card):
 
 
 class ComboBoxStyling(QComboBox):
+    """_styling for the combo boxes_
+
+    Args:
+        QComboBox (Pyside6 Object): _init. to the super class_
+    """
     def __init__(self):
         super().__init__()
         self.setStyle(QStyleFactory.create("Fusion"))
@@ -375,9 +382,11 @@ class DriverStandings(Card):
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Driver Standings"))
 
-def _telemetryLabel(
-    text: str, size: int = 11, color: str | None = None, bold: bool = False
-) -> QLabel:
+    def _standingsBuilder(self):
+        return
+
+# UI helper 
+def _telemetryLabel(text: str, size: int = 11, color: str | None = None, bold: bool = False) -> QLabel:
     """_small helper so every label in the telemetry card shares the same font and a transparent background_"""
     label = QLabel(text)
     label.setStyleSheet(
@@ -390,9 +399,9 @@ def _telemetryLabel(
     )
     return label
 
-# NOTE: not using yet just trying to get an idea of the telemetry dashboard
+# UI helper classes for driver telemetry
 class StatCard(QWidget):
-    """_a small caption above a big value, with an optional unit (SPEED / 284 KM/H)_"""
+    """_a small caption above a big value, with an optional unit ([SPEED] KM/H)_"""
  
     def __init__(
         self,
@@ -425,6 +434,117 @@ class StatCard(QWidget):
     def setValue(self, value: str) -> None:
         self.valueLabel.setText(value)
 
+class MeterBar(QWidget):
+    """_labelled progress bar with a percent readout (THROTTLE PRESSURE 75%)_"""
+ 
+    def __init__(self, title: str, color: str):
+        super().__init__()
+        self.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+ 
+        header = QHBoxLayout()
+        header.addWidget(_telemetryLabel(title.upper(), 10, color, bold=True))
+        header.addStretch()
+        self.percentLabel = _telemetryLabel("0%", 10, color, bold=True)
+        header.addWidget(self.percentLabel)
+        layout.addLayout(header)
+ 
+        self.bar = QProgressBar()
+        self.bar.setRange(0, 100)
+        self.bar.setTextVisible(False)
+        self.bar.setFixedHeight(8)
+        self.bar.setStyleSheet(
+            f"""
+            QProgressBar {{
+                background-color: {theme.tertiaryText};
+                border: none;
+                border-radius: 4px;
+            }}
+            QProgressBar::chunk {{
+                background-color: {color};
+                border-radius: 4px;
+            }}
+            """
+        )
+        layout.addWidget(self.bar)
+ 
+    def setPercent(self, percent: float) -> None:
+        percent = max(0, min(100, int(round(percent))))
+        self.bar.setValue(percent)
+        self.percentLabel.setText(f"{percent}%")
+
+class DriverRow(QHBoxLayout):
+    def __init__(self):
+        super().__init__()
+
+        self.setSpacing(padding)
+        
+        self.driverBadge = QLabel("No Driver")
+        self.driverBadge.setStyleSheet(
+            f"""
+            background-color: {theme.success};
+            color: #0B0E14;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 4px 12px;
+            border-radius: 6px;
+            """
+        )
+
+        self.competitorLabel = QLabel("Closest Competitor| --")
+        self.competitorLabel.setStyleSheet(
+            f"""
+            background-color: transparent;
+            color: {theme.secondaryText};
+            font-size: 12px;
+            padding: 4px 12px;
+            border: 1px solid {theme.info};
+            border-radius: 6px;
+            """ 
+        )
+
+        self.addWidget(self.driverBadge)
+        self.addWidget(self.competitorLabel)
+        self.fastestLap = self.__lapBlock("Fastest Lap")
+        self.currentLapTime = self.__lapBlock("Current Lap")
+        # NOTE is this the best way to build this out?
+        self.addLayout(self.fastestLap[0])
+        self.addLayout(self.currentLapTime[0])
+        self.addStretch()
+    # builder for the lap data in driver telem top right side
+    def __lapBlock(self, title:str, color: str = theme.secondaryText) -> {QVBoxLayout, QLabel}:
+        layout = QVBoxLayout()
+        layout.setSpacing(labelPadding)
+        layout.addWidget(
+            _telemetryLabel(title, 10), alignment=Qt.AlignmentFlag.AlignRight
+        )
+        lapValue = _telemetryLabel("__:__", fontStyles.text, color, bold= True)
+        layout.addWidget(lapValue, alignment= Qt.AlignmentFlag.AlignRight)
+        return layout, lapValue
+
+    def updateTelemetry() -> None:
+        print("stub")
+
+class DataRow(QHBoxLayout):
+    def __init__(self):
+        super().__init__()
+
+        self.setSpacing(padding)
+        self.speedCard = StatCard("Speed", "__", "KM/H")
+        self.gearCard = StatCard("Gear", "__", valueColor= theme.success)
+        self.rpmCard = StatCard("RPM", "__", valueSize= 20)
+        self.throttleMeter = MeterBar("Throttle Pressure", theme.success)
+        self.breakCard = StatCard("breaks", "__", valueColor= theme.danger)
+        self.fuelCard = StatCard("Estimated Fuel", "__", valueColor= theme.warning )
+        self.addWidget(self.speedCard)
+        self.addWidget(self.gearCard)
+        self.addWidget(self.rpmCard)
+        self.addWidget(self.throttleMeter)
+        self.addWidget(self.breakCard)
+        self.addWidget(self.fuelCard)
+
 class DriverTelemetry(Card):
     """
     _showcase the focussed driver's live telemetry_
@@ -446,55 +566,26 @@ class DriverTelemetry(Card):
         # create and add a label for layout purposes
         layout = QVBoxLayout(self)
 
-        topRowLayout = QHBoxLayout()
-        topRowLayout.setSpacing(padding)
+        driverRow = DriverRow()
+        layout.addLayout(driverRow)
 
-        self.driverBadge = QLabel("No Driver")
-        self.driverBadge.setStyleSheet(
-            f"""
-            background-color: {theme.success};
-            color: #0B0E14;
-            font-size: 12px;
-            font-weight: bold;
-            padding: 4px 12px;
-            border-radius: 6px;
-            """
+        data = DataRow()
+        layout.addLayout(data)
+        layout.addLayout(data)
+
+    # builder for the lap data in driver telem top right side
+    def __lapBlock(self, title:str, color: str = theme.secondaryText) -> {QVBoxLayout, QLabel}:
+        layout = QVBoxLayout()
+        layout.setSpacing(labelPadding)
+        layout.addWidget(
+            _telemetryLabel(title, 10), alignment=Qt.AlignmentFlag.AlignRight
         )
+        lapValue = _telemetryLabel("__:__", fontStyles.text, color, bold= True)
+        layout.addWidget(lapValue, alignment= Qt.AlignmentFlag.AlignRight)
+        return layout, lapValue
 
-        self.competitorLabel = QLabel("Closest Competitor| --")
-        self.competitorLabel.setStyleSheet(
-           f"""
-            background-color: transparent;
-            color: {theme.secondaryText};
-            font-size: 12px;
-            padding: 4px 12px;
-            border: 1px solid {theme.info};
-            border-radius: 6px;
-            """ 
-        )
-
-        topRowLayout.addWidget(self.driverBadge)
-        topRowLayout.addWidget(self.competitorLabel)
-        topRowLayout.addStretch()
-
-        layout.addLayout(topRowLayout)
-
-        dataRow = QHBoxLayout()
-        dataRow.setSpacing(padding)
-
-        self.speedCard = StatCard("Speed", "__", "KM/H")
-        self.gearCard = StatCard("Gear", "__", valueColor= theme.success)
-        self.rpmCard = StatCard("RPM", "__", valueSize= 20)
-        self.breakCard = StatCard("breaks", "__", valueColor= theme.danger)
-        self.fuelCard = StatCard("Estimated Fuel", "__", valueColor= theme.warning )
-        dataRow.addWidget(self.speedCard)
-        dataRow.addWidget(self.gearCard)
-        dataRow.addWidget(self.rpmCard)
-        dataRow.addWidget(self.breakCard)
-        dataRow.addWidget(self.fuelCard)
-
-        layout.addLayout(dataRow)
-
+    def updateTelemetry() -> None:
+        print("stub")
 
 
 class SessionSelector(Card):
