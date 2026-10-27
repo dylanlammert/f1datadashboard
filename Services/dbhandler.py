@@ -1024,6 +1024,7 @@ class DBhandler:
         print(f"{session.name} total session time = {raceDuration}")
         return raceDuration
 
+    # NOTE: Flagged for Depreciation
     def _setSessionTotalTime(self):
         """
         _This function needs to be able to set if not set each session time in the session table with the proper session time_
@@ -1150,6 +1151,22 @@ class DBhandler:
 
         # procecs the sessionTable and make it a list[dicts]
         return sessionTableDict
+
+
+    # NOTE: This will need to be able to buffer the data
+    # NOTE: will need to show a different line on the playcontrols to show how close the data is to being loaded
+    def loadLiveDataFromDB(self, attributeList: list, lastLoadedIndex: int, blockSize: int = 10):
+        """_This function grabs blocks from the telemetry table until desired data is downloaded,
+            this is intended to be threaded to allow users to start playback as soon as possible._
+
+        Args:
+            attributeList (list): _description_
+            lastLoadedIndex (int): _description_
+            blockSize (int, optional): _description_. Defaults to 10.
+
+        Returns:
+            _type_: _description_
+        """
 
     # NOTE: rewrite this to be more standard compared to other getters
     def getDriverPosData(self, session_id: int) -> pd.DataFrame:

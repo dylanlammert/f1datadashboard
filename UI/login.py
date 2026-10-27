@@ -12,6 +12,11 @@ from PySide6.QtWidgets import (
 
 from ViewModels.connectivityVM import ConnectivityVM
 
+"""
+    TODO:
+    * Login button should pop up when token expires so that the app doesn't stall and make ghost requests to the cdl
+    
+"""
 
 class LoginPage(QWidget):
     """Login popup. Shows the login form, or a prompt if there's no internet."""

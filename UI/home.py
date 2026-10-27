@@ -375,18 +375,126 @@ class DriverStandings(Card):
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Driver Standings"))
 
+def _telemetryLabel(
+    text: str, size: int = 11, color: str | None = None, bold: bool = False
+) -> QLabel:
+    """_small helper so every label in the telemetry card shares the same font and a transparent background_"""
+    label = QLabel(text)
+    label.setStyleSheet(
+        f"""
+        background: transparent;
+        color: {color or theme.secondaryText};
+        font-size: {size}px;
+        font-weight: {"bold" if bold else "normal"};
+        """
+    )
+    return label
+
+# NOTE: not using yet just trying to get an idea of the telemetry dashboard
+class StatCard(QWidget):
+    """_a small caption above a big value, with an optional unit (SPEED / 284 KM/H)_"""
+ 
+    def __init__(
+        self,
+        title: str,
+        value: str = "--",
+        unit: str = "",
+        valueColor: str | None = None,
+        valueSize: int = 28,
+    ):
+        super().__init__()
+        self.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        layout.addWidget(_telemetryLabel(title.upper(), 10))
+ 
+        valueRow = QHBoxLayout()
+        valueRow.setSpacing(4)
+        self.valueLabel = _telemetryLabel(
+            value, valueSize, valueColor or theme.primaryText, bold=True
+        )
+        valueRow.addWidget(self.valueLabel, alignment=Qt.AlignmentFlag.AlignBottom)
+        if unit:
+            valueRow.addWidget(
+                _telemetryLabel(unit, 11), alignment=Qt.AlignmentFlag.AlignBottom
+            )
+        valueRow.addStretch()
+        layout.addLayout(valueRow)
+ 
+    def setValue(self, value: str) -> None:
+        self.valueLabel.setText(value)
 
 class DriverTelemetry(Card):
     """
     _showcase the focussed driver's live telemetry_
+
+    - will need to run a diff sql exec script to grab more data from telem
+                    - position from lap can also build from telem person in front of
+                    - rpm val
+                    - speed
+                    - brake bool
+                    - drs val
+                    - throttle val for meter
+                    - x, y pos
+                    - gear
     """
 
     def __init__(self):
         super().__init__()
         self.setMaximumHeight(100)
         # create and add a label for layout purposes
-        layout = QHBoxLayout(self)
-        layout.addWidget(QLabel("Driver Telemetry"))
+        layout = QVBoxLayout(self)
+
+        topRowLayout = QHBoxLayout()
+        topRowLayout.setSpacing(padding)
+
+        self.driverBadge = QLabel("No Driver")
+        self.driverBadge.setStyleSheet(
+            f"""
+            background-color: {theme.success};
+            color: #0B0E14;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 4px 12px;
+            border-radius: 6px;
+            """
+        )
+
+        self.competitorLabel = QLabel("Closest Competitor| --")
+        self.competitorLabel.setStyleSheet(
+           f"""
+            background-color: transparent;
+            color: {theme.secondaryText};
+            font-size: 12px;
+            padding: 4px 12px;
+            border: 1px solid {theme.info};
+            border-radius: 6px;
+            """ 
+        )
+
+        topRowLayout.addWidget(self.driverBadge)
+        topRowLayout.addWidget(self.competitorLabel)
+        topRowLayout.addStretch()
+
+        layout.addLayout(topRowLayout)
+
+        dataRow = QHBoxLayout()
+        dataRow.setSpacing(padding)
+
+        self.speedCard = StatCard("Speed", "__", "KM/H")
+        self.gearCard = StatCard("Gear", "__", valueColor= theme.success)
+        self.rpmCard = StatCard("RPM", "__", valueSize= 20)
+        self.breakCard = StatCard("breaks", "__", valueColor= theme.danger)
+        self.fuelCard = StatCard("Estimated Fuel", "__", valueColor= theme.warning )
+        dataRow.addWidget(self.speedCard)
+        dataRow.addWidget(self.gearCard)
+        dataRow.addWidget(self.rpmCard)
+        dataRow.addWidget(self.breakCard)
+        dataRow.addWidget(self.fuelCard)
+
+        layout.addLayout(dataRow)
+
 
 
 class SessionSelector(Card):

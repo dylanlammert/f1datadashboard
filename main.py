@@ -31,6 +31,8 @@ from Services.dbhandler import DBhandler
 from Services.database import create_schema
 from Services.api_handler import get_race
 
+# font styles
+from UI import Theme
 
 """
 Global Vars
@@ -178,7 +180,9 @@ class LoginButton(QFrame):
 
 def _main():
     app = QApplication(sys.argv)
-
+    # TODO: work on loading correct font
+    #Theme.loadFonts()
+    #app.setFont(Theme.fontStyles.qfont())
     # ! The app will not load without this. It needs to have a race loaded into the DB or everything breaks.
     if not Path("./f1_data.db"):
         create_schema()

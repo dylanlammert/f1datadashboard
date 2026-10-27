@@ -1,8 +1,8 @@
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, QThreadPool
 from Services.dbhandler import DBhandler
 from ViewModels.connectivityVM import ConnectivityVM
 import pandas as pd
-from Services.api_handler import get_schedule_by_year, get_race
+from Services.api_handler import get_schedule_by_year, get_race, GetRaceWorker
 import traceback
 
 """
@@ -47,6 +47,8 @@ class SessionSelectorVM(QObject):
         self.connectivityVM = conectivityModel
         self.connectivityVM.onlineChanged.connect(self.onConnectionUpdate)
 
+        self.thread_pool = QThreadPool.globalInstance()
+
     # helper functions
     def __formatYearList(self, sessionList):
         self.currentYearSet.clear()
@@ -67,8 +69,16 @@ class SessionSelectorVM(QObject):
                 eventName=sessionInfoDict["event_name"],
                 sessionType=sessionInfoDict["session_type"],
             )
+            self.__updateCurrentSessionID(newSessionID= newSessionID)
+
         else:
-            newSessionID = self.__createSessionInstance(sessionInfoDict)
+            worker = GetRaceWorker(sessionInfoDict["year"], sessionInfoDict["event_name"])
+            worker.signal.finished_signal.connect(self.__updateCurrentSessionID)
+            self.thread_pool.start(worker)
+            
+            newSessionID = self.__createSessionInstance(self.__updateCurrentSessionID)
+
+    def __updateCurrentSessionID(self, newSessionID):
         self.currentSessionID = newSessionID
         self.currentSessionIDChanged.emit(newSessionID)
 
