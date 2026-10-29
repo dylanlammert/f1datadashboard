@@ -4,7 +4,7 @@ from ViewModels.connectivityVM import ConnectivityVM
 import pandas as pd
 from Services.api_handler import get_schedule_by_year, get_race, GetRaceWorker
 import traceback
-
+from ViewModels.driverStandingsVM import BlockLoader
 """
     
 NOTE:
@@ -69,14 +69,32 @@ class SessionSelectorVM(QObject):
                 eventName=sessionInfoDict["event_name"],
                 sessionType=sessionInfoDict["session_type"],
             )
-            self.__updateCurrentSessionID(newSessionID= newSessionID)
-
+            #self.__updateCurrentSessionID(newSessionID= newSessionID)
+            self.__onSessionReady(newSessionID)
         else:
+            self.pendingSessionInfo = sessionInfoDict
+            # start loading race data from api
             worker = GetRaceWorker(sessionInfoDict["year"], sessionInfoDict["event_name"])
-            worker.signal.finished_signal.connect(self.__updateCurrentSessionID)
+            # after the race is done downloading start loading needed data into memory
+            worker.signal.finished_signal.connect(self.__onDownloadFinished)
             self.thread_pool.start(worker)
-            
-            newSessionID = self.__createSessionInstance(self.__updateCurrentSessionID)
+            #newSessionID = self.__createSessionInstance(self.__updateCurrentSessionID)
+    
+    def __onDownloadFinished(self):
+        info = self.pendingSessionInfo
+
+        sessionID = self.dbHandler.getSessionID(
+            tableName= "sessions",
+            year = info["year"],
+            eventName= info["event_name"],
+            sessionType= info["session_type"],
+        )
+        self.__onSessionReady(sessionID)
+
+    def __onSessionReady(self, sessionID: int):
+        self.__updateCurrentSessionID(newSessionID= sessionID)
+
+        dataLoader = BlockLoader(sessionID= self.currentSessionID)
 
     def __updateCurrentSessionID(self, newSessionID):
         self.currentSessionID = newSessionID

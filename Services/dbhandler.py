@@ -471,7 +471,7 @@ class DBhandler:
             throttle REAL,
             brake INTEGER,
             drs INTEGER,
-            SPEED REAL,
+            speed REAL,
             rpm REAL,
             PRIMARY KEY (session_id, driver_code, session_time)
             FOREIGN KEY (session_id) REFERENCES sessions(session_id)
@@ -1152,21 +1152,102 @@ class DBhandler:
         # procecs the sessionTable and make it a list[dicts]
         return sessionTableDict
 
+    # NOTE: Updated 10/27 current working area
+    # NOTE: Current implementation is a little convoluted meant to reduce the # of times searching the db
+    def getLapsDataBlock(self, attributeList: list, lastLoadedLap: int = 0, blockSize: int = 10, sessionID: int = 0) -> tuple[list[dict], int, bool]:
+        """_summary_
 
-    # NOTE: This will need to be able to buffer the data
-    # NOTE: will need to show a different line on the playcontrols to show how close the data is to being loaded
-    def loadLiveDataFromDB(self, attributeList: list, lastLoadedIndex: int, blockSize: int = 10):
+        Args:
+            attributeList (list): _attributes in search of_
+            lastLoadedLap (int, optional): _last loaded lap in previous data block_. Defaults to 0.
+            blockSize (int, optional): _block size to load_. Defaults to 10.
+            sessionID (int, optional): _current sessionID_. Defaults to 0.
+
+        Returns:
+            _type_: _description_
+        """
+        endFlag: bool = False
+        currentLoadedLap: int = lastLoadedLap
+        selectList = list(attributeList)
+        # need to have lap_number in order to see last loaded lap
+        if "lap_number" not in selectList:
+            selectList.append("lap_number")
+
+        self._checkNames("laps", selectList)
+        attributes = ", ".join(selectList)
+
+        cursor = self.conn.cursor()
+        dbQuery = (
+            f"SELECT {attributes} FROM laps "
+            f"WHERE session_id = ? AND lap_number > ? AND lap_number <= ? "
+            f"ORDER BY lap_number, driver "
+        )
+        cursor.execute(dbQuery, (sessionID, lastLoadedLap, lastLoadedLap + blockSize))
+        results = cursor.fetchall()
+
+        # for each row in results take the column from attributeList and the data value from results
+        rows = [dict(zip(selectList, row)) for row in results]
+
+        # current loaded lap
+        currentLoadedLap = max(r["lap_number"] for r in rows)
+        
+        # if the max lap number is smaller than lastLoadedLap + blockSize
+        if (not rows) or (currentLoadedLap < (lastLoadedLap + blockSize)):
+            # set the endflag
+            endFlag = True
+
+        # return formatted rows and the endflag status
+        return rows, currentLoadedLap, endFlag
+
+    # NOTE: will need to show a different line on the playcontrols to show how close the data is to being loaded 
+    # NOTE: current implementation is a little convoluted but meant to reduce the # of times searching db
+    def getTelemetryDataBlock(self, attributeList: list, lastLoadedTime: float = 0.00, blockSize: int = 10, sessionID: int = 0) -> tuple[list[dict], float, bool]:
         """_This function grabs blocks from the telemetry table until desired data is downloaded,
             this is intended to be threaded to allow users to start playback as soon as possible._
 
         Args:
             attributeList (list): _description_
             lastLoadedIndex (int): _description_
-            blockSize (int, optional): _description_. Defaults to 10.
+            blockSize (int, optional): _This is the time buffer search within 10 seconds_. Defaults to 10.
+            sessionID (int): _this is the current sessionID_. Defaults to 0.
 
         Returns:
             _type_: _description_
         """
+        endFlag = False
+        currentLoadedTime = lastLoadedTime
+
+        selectList = list(attributeList)
+        if "session_time" not in selectList:
+            selectList.append("session_time")
+
+        self._checkNames("live_driver_telemetry", selectList)
+        attributes = ", ".join(selectList)
+
+        cursor = self.conn.cursor()
+        dbQuery = (
+            f"SELECT {attributes} FROM live_driver_telemetry "
+            f"WHERE session_id = ? AND session_time > ? AND session_time <= ? "
+            f"ORDER BY session_time, driver_code "
+        )
+        # The blockSize + 1 is to check if there is another row after current time won't always be formatted right there is about a .3 gap in between each row
+        cursor.execute(dbQuery, (sessionID, lastLoadedTime, lastLoadedTime + blockSize + 1))
+        results = cursor.fetchall()
+
+        # format the results into a list of dicts
+        rows = [dict(zip(selectList, row)) for row in results]
+
+        # if max session time < lastloadedTime + blockSize then there is no more data to load
+        # find the highest loadedTime
+        currentLoadedTime = max(r["session_time"] for r in results)
+            
+        if (not rows) or ((currentLoadedTime) < (lastLoadedTime + blockSize)):
+            endFlag = True
+        else: 
+            #trim the last index from results
+            rows = rows[: -1]
+
+        return rows, currentLoadedTime, endFlag
 
     # NOTE: rewrite this to be more standard compared to other getters
     def getDriverPosData(self, session_id: int) -> pd.DataFrame:

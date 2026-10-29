@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, QThreadPool, QRunnable
 from Services.dbhandler import DBhandler
-from ViewModels.raceSimulationVM import PlayControlsVM
 
 """
 NOTE:
@@ -24,26 +23,61 @@ TODO:
     
 
 """
-class blockLoader(QObject):
+class BlockLoaderWorkerSignals(QObject):
+    __allBlocksLoaded = Signal(bool)
+    
+    @property
+    def finished_signal(self):
+        return self.__allBlocksLoaded
 
-    # signal driver standings block ready 
-    __driverStandingsBlockLoaded = Signal(list[dict])
+    __driverStandingsBlockLoaded = Signal(list)
 
     @property
     def driverStandingsBlockChanged(self):
         return self.__driverStandingsBlockLoaded
 
-    # signal driver telemetry block ready 
-    __driverTelemBlockLoaded = Signal(dict[str[dict]])
-
+    __driverTelemBlockLoaded = Signal(list)
     @property
     def driverTelemBlockChanged(self):
         return self.__driverTelemBlockLoaded
 
-    def __init__(self):
-        super().__init__()
+    __currentAvailablePlaybackLoaded = Signal(float)
 
-    def loadLivePlaybackSessionData(self):
+    @property
+    def currentAvailablePlaybackChanged(self):
+        return self.__currentAvailablePlaybackLoaded
+
+class BlockLoader(QRunnable):
+    # this will be run off of session Selector Change
+
+    def __init__(self, sessionID: int):
+        super().__init__()
+        self.signals = BlockLoaderWorkerSignals()
+        self.thread_pool = QThreadPool.globalInstance()
+        self.dbHandler = DBhandler()
+        self.sessionID = sessionID
+
+    # signal to show playback controls how far the data has been loaded
+    # NOTE: this needs to be a QRunnable worker then it needs to organize the data and send the signals off with the dictionaries
+    def run(self):
+        # get total rows in db for session: (telem, laps)
+        focusDriverEndFlag: bool = False
+        driverStandingsEndFlag: bool = False
+        self.lastLoadedLap: int = 0
+        self.lastLoadedTime: float = 0.0
+        # while at least 1 data block is still loading keep running
+        while (focusDriverEndFlag != True) or (driverStandingsEndFlag != True):
+            # grab data from db
+            lapData, self.lastLoadedLap, driverStandingsEndFlag = self.dbHandler.getLapsDataBlock(attributeList= ["driver", "team", "lap_number", "compound", "tyre_life", "position", "lap_start_time", "lap_end_time"], sessionID= self.sessionID, lastLoadedLap= self.lastLoadedLap )
+            driverTelem, self.lastLoadedTime, focusDriverEndFlag = self.dbHandler.getTelemetryDataBlock(attributeList= ["driver_code","session_time", "x_pos", "y_pos", "distance_to_driver_ahead", "gear", "throttle", "brake", "drs", "speed", "rpm"], sessionID= self.sessionID, lastLoadedTime= self.lastLoadedTime)
+
+            # send data to data signals
+            self.signals.__driverStandingsBlockLoaded.emit(lapData)
+            self.signals.__driverTelemBlockLoaded.emit(driverTelem)
+
+            # send data to playback signal 
+            self.signals.__currentAvailablePlaybackLoaded.emit(self.lastLoadedTime)
+
         return
 
 class FocusDriverVM(QObject):
@@ -62,7 +96,7 @@ class FocusDriverVM(QObject):
         return self.__currentFocusedDriversLoaded
 
 
-    def __init__(self, playControlsVM: PlayControlsVM):
+    def __init__(self):
         super().__init__()
         self.dbHandler = DBhandler()
         self.focusedDrivers: set[str]
@@ -92,8 +126,6 @@ class FocusDriverVM(QObject):
             self.focusedDrivers.add(driverToToggle)
         
         
-        
-
 class DriverStandingsViewModel(QObject):
     """Provides race-based driver standings to the UI."""
 
@@ -108,12 +140,11 @@ class DriverStandingsViewModel(QObject):
     def focused_driver_changed(self):
         return self.__focused_driver_loaded
 
-    def __init__(self, dbhandler: DBhandler | None = None, playControlsVM: PlayControlsVM | None = None):
+    def __init__(self, dbhandler: DBhandler | None = None):
         super().__init__()
         self.dbhandler = dbhandler if dbhandler is not None else DBhandler()
         self.__driver_data = []
         self.__focused_driver = None
-        self.playControlsVM = playControlsVM
         self.playControlsVM.updatedTime.connect(self.onClockUpdate)
 
 
