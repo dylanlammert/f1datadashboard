@@ -305,6 +305,7 @@ class GraphCanvasContainer(QWidget):
                 session_id=self.current_session_id,
                 driver_code=row[0],
                 db_path=self.dbhandler.dbPath,
+                race_only=True,
             )
             return FigureCanvasQTAgg(fig)
 

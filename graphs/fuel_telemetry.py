@@ -158,13 +158,31 @@ def estimate_remaining_fuel(
 
 
 def plot_estimated_fuel(
-    session_id: int, driver_code: str, initial_fuel_kg: float = 110.0, db_path=DB_PATH
+    session_id: int, driver_code: str, initial_fuel_kg: float = 110.0, db_path=DB_PATH, race_only=False
 ):
     """Generate a line graph of estimated remaining fuel over time."""
     # Load telemetry for the selected driver, then estimate fuel remaining.
     telemetry = load_driver_telemetry(
         session_id=session_id, driver_code=driver_code, db_path=db_path
     )
+
+    if race_only:
+        with closing(sqlite3.connect(str(db_path))) as conn:
+            bounds = conn.execute(
+                """
+                SELECT MIN(lap_start_time), MAX(lap_end_time)
+                FROM laps
+                WHERE session_id = ? AND driver = ?
+                """,
+                (session_id, driver_code.upper()),
+            ).fetchone()
+
+        if not bounds or bounds[0] is None or bounds[1] is None:
+            raise ValueError("Race lap boundaries are unavailable.")
+
+        telemetry = telemetry.loc[
+            telemetry["session_time"].between(bounds[0], bounds[1])
+        ].copy()
 
     fuel_data = estimate_remaining_fuel(
         telemetry=telemetry, initial_fuel_kg=initial_fuel_kg
