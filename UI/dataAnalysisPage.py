@@ -289,6 +289,9 @@ class GraphCanvasContainer(QWidget):
                     FROM live_driver_telemetry
                     WHERE session_id = ?
                     GROUP BY driver_code
+                    HAVING COUNT(*) = COUNT(throttle)
+                       AND MIN(throttle) >= 0
+                       AND MAX(throttle) <= 100
                     ORDER BY COUNT(*) DESC
                     LIMIT 1
                     """,
