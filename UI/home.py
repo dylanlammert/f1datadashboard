@@ -129,7 +129,7 @@ class ComboBoxStyling(QComboBox):
             """
         )
 
-
+# NOTE: fix issue with buffer UI
 class PlayControlsUI(Card):
     """_Front-end for the PlayControls VM. this controls the user input for toggling play, scrubbing, and playback speed_
 

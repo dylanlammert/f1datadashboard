@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QFrame,
     QLabel,
+    QSizePolicy,
 )
 from PySide6.QtGui import QPalette, Qt
 
@@ -31,12 +32,15 @@ from Services.dbhandler import DBhandler
 from Services.database import create_schema
 from Services.api_handler import get_race
 
+# import token checker
+from Services.api_handler import isTokenValid
 # font styles
-from UI import Theme
+from UI.Theme import DayTheme
 
 """
 Global Vars
 """
+theme = DayTheme()
 currentPageIndex = 0
 backgroundColor = "#1A1A1A"
 """
@@ -71,7 +75,7 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
 
         # create the main elements and pass down the switch page function
-        self.sidebar = Sidebar(self.switch_page, self.conectivityVM)
+        self.sidebar = Sidebar(self.switch_page, self.conectivityVM, self.sessionSelectorVM)
         # changed the 1st self to try to pass down currentPageIndx
         self.home = HomePage(
             trackStatusViewModel=self.trackStatusVM,
@@ -92,6 +96,8 @@ class MainWindow(QMainWindow):
         mainContainerLayout.addWidget(self.sidebar)
         mainContainerLayout.addWidget(self.stack)
 
+        # run the token check 
+        self.refreshLoginButton()
     """
     @brief this function changes the current index of the stack to
            change the current widget being shown
@@ -99,6 +105,16 @@ class MainWindow(QMainWindow):
 
     def switch_page(self, index):
         self.stack.setCurrentIndex(index)
+
+    # NOTE: could fix this to use less lines
+    def refreshLoginButton(self):
+        valid = isTokenValid()
+        if valid is not None:
+            self.sidebar.loginButton.setVisible(not valid)
+            self.sessionSelectorVM.userLoggedIn = False
+        if valid is None:
+            self.sidebar.loginButton.setVisible(True)
+            self.sessionSelectorVM.userLoggedIn = False
 
 
 """
@@ -110,9 +126,9 @@ class MainWindow(QMainWindow):
 
 
 class Sidebar(QFrame):
-    def __init__(self, switch_page, connectivityVM):
+    def __init__(self, switch_page, connectivityVM ,sessionSelectorVM):
         super().__init__()
-        self.setFixedWidth(125)
+        self.setFixedWidth(150)
         # self.setMaximumWidth(150)
         # self.setMinimumWidth(40)
         self.setAutoFillBackground(True)
@@ -127,7 +143,7 @@ class Sidebar(QFrame):
         self.layout = QVBoxLayout(self)
         self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self.loginButton = LoginButton(connectivityVM=connectivityVM)
+        self.loginButton = LoginButton(connectivityVM=connectivityVM, sessionSelectorVM = sessionSelectorVM)
         self.layout.addWidget(self.loginButton)
         changePageBtn = QPushButton("Home")
         # removes window auto focussing to this button on launch
@@ -159,14 +175,37 @@ class Sidebar(QFrame):
 
 
 class LoginButton(QFrame):
-    def __init__(self, connectivityVM: ConnectivityVM):
+    def __init__(self, connectivityVM: ConnectivityVM, sessionSelectorVM = SessionSelectorVM):
         super().__init__()
         sectionLayout = QVBoxLayout(self)
         self.connectivityVM = connectivityVM
-        self.loginStatus: str = "Please login to access all sessions"
+        self.sessionSelector = sessionSelectorVM
+        self.loginStatus: str = "login to F1TV to access online sessions"
+
+        self.setObjectName("loginBox")
+        self.setStyleSheet(
+            f"""
+            #loginBox {{
+                border: 2px solid {theme.secondaryText};
+                border-radius: 12px;
+            }}
+            """)
         loginlabel = QLabel(self.loginStatus)
+        loginlabel.setWordWrap(True)
+        loginlabel.setMinimumHeight(loginlabel.fontMetrics().height() * 4)
+        
         loginButton = QPushButton("Login")
         loginButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        loginButton.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {theme.info};
+                border: none;
+                border-radius: 12px;
+                padding: 4px;
+            }}
+            """
+        )
         loginButton.clicked.connect(self.openLogin)
 
         # add to section layout
@@ -175,8 +214,11 @@ class LoginButton(QFrame):
 
     def openLogin(self):
         self.loginPage = LoginPage(connectionStatus=self.connectivityVM)
+        self.loginPage.form.loggedIn.connect(self.onLoggedIn)
         self.loginPage.show()
 
+    def onLoggedIn(self, success: bool):
+        self.sessionSelector.userLoggedin = success
 
 def _main():
     app = QApplication(sys.argv)
@@ -187,7 +229,7 @@ def _main():
     if not Path("./f1_data.db"):
         create_schema()
         get_race(2026, "Japanese Grand Prix", "R")
-
+     
     window = MainWindow()
     window.resize(700, 300)
     window.show()

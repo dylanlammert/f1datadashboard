@@ -188,7 +188,7 @@ class DriverStandingsViewModel(QObject):
         self.dataBlockSignals.driverStandingsBlockChanged.connect()
         # initialize the standing data to be empty this is what the UI will use for updating
         self.standingsData: list = []
-
+        
 
     def __onClockUpdate(self, newTime: float):
         # NOTE: driver standings should update every clock tick

@@ -51,7 +51,7 @@ class SessionSelectorVM(QObject):
         # share the mem location of the model init in main
         self.connectivityVM = conectivityModel
         self.connectivityVM.onlineChanged.connect(self.onConnectionUpdate)
-
+        self.userLoggedIn: bool | None = None
         self.thread_pool = QThreadPool.globalInstance()
 
     # helper functions
@@ -129,7 +129,7 @@ class SessionSelectorVM(QObject):
         """
         # NOTE: need to insure this function returns list of dicts
         availableFastF1Sessions: list[dict] = []
-        if not self.connectivityVM.isOnline:
+        if not self.connectivityVM.isOnline or self.userLoggedIn is not True:
             # if user doesn't have internet only show the races that are already in the database
             print("fetchAvailableRaces : > user is offline ")
             # TODO: change the years to local session years
