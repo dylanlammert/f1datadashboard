@@ -4,7 +4,7 @@ from ViewModels.connectivityVM import ConnectivityVM
 import pandas as pd
 from Services.api_handler import get_schedule_by_year, get_race, GetRaceWorker
 import traceback
-from ViewModels.driverStandingsVM import BlockLoader
+from ViewModels.driverStandingsVM import BlockLoader, BlockLoaderWorkerSignals
 """
     
 NOTE:
@@ -38,9 +38,10 @@ class SessionSelectorVM(QObject):
     TODAY = pd.Timestamp.now(tz="UTC").tz_localize(None)
     CURRENT_YEAR = TODAY.year
 
-    def __init__(self, conectivityModel: ConnectivityVM):
+    def __init__(self, conectivityModel: ConnectivityVM, signals: BlockLoaderWorkerSignals):
         super().__init__()
         self.dbHandler = DBhandler()
+        self.signals = signals
         self.currentSessionID: int = 0
         self.localSessions: list[dict] = self.dbHandler.getSessionsFromDB()
         print(self.localSessions)
@@ -99,7 +100,7 @@ class SessionSelectorVM(QObject):
     def __onSessionReady(self, sessionID: int):
         self.__updateCurrentSessionID(newSessionID= sessionID)
         # start the worker
-        dataLoaderWorker = BlockLoader(sessionID= self.currentSessionID)
+        dataLoaderWorker = BlockLoader(sessionID= self.currentSessionID, signals= self.signals)
         dataLoaderWorker.signals.currentAvailablePlaybackChanged.connect(
             self.__currentAvailablePlaybackChanged.emit
         )
@@ -110,6 +111,13 @@ class SessionSelectorVM(QObject):
     def __updateCurrentSessionID(self, newSessionID):
         self.currentSessionID = newSessionID
         self.currentSessionIDChanged.emit(newSessionID)
+
+    def onLoggedIn(self, Status: bool):
+        self.userLoggedIn = Status
+        sessionList = self.fetchAvailableRaces()
+        self.availableList = sessionList
+        print("SessionSelectorVM/onLoggedIn: emiting new list")
+        self.availableListChanged.emit(sessionList)
 
     def onConnectionUpdate(self, newConnectionStatus: bool):
         # emit the real list that the view needs to display
@@ -129,9 +137,13 @@ class SessionSelectorVM(QObject):
         """
         # NOTE: need to insure this function returns list of dicts
         availableFastF1Sessions: list[dict] = []
-        if not self.connectivityVM.isOnline or self.userLoggedIn is not True:
+        if not self.userLoggedIn:
+            print("fetchAvailableRaces: user is not logged in")
+            self.__formatYearList(self.localSessions)
+            return self.localSessions
+        if not self.connectivityVM.isOnline:
             # if user doesn't have internet only show the races that are already in the database
-            print("fetchAvailableRaces : > user is offline ")
+            print("fetchAvailableRaces: user is offline ")
             # TODO: change the years to local session years
             self.__formatYearList(self.localSessions)
             return self.localSessions

@@ -50,9 +50,9 @@ class BlockLoaderWorkerSignals(QObject):
 class BlockLoader(QRunnable):
     # this will be run off of session Selector Change
 
-    def __init__(self, sessionID: int):
+    def __init__(self, sessionID: int, signals: BlockLoaderWorkerSignals):
         super().__init__()
-        self.signals = BlockLoaderWorkerSignals()
+        self.signals = signals
         self.thread_pool = QThreadPool.globalInstance()
         self.sessionID = sessionID
 
@@ -70,17 +70,19 @@ class BlockLoader(QRunnable):
         try:
             # while at least 1 data block is still loading keep running
             while (focusDriverEndFlag != True) or (driverStandingsEndFlag != True):
-                # grab data from db
-                lapData, self.lastLoadedLap, driverStandingsEndFlag = dbHandler.getLapsDataBlock(attributeList= ["driver", "team", "lap_number", "compound", "tyre_life", "position", "lap_start_time", "lap_end_time"], sessionID= self.sessionID, lastLoadedLap= self.lastLoadedLap )
-                driverTelem, self.lastLoadedTime, focusDriverEndFlag = dbHandler.getTelemetryDataBlock(attributeList= ["driver_code","session_time", "x_pos", "y_pos", "distance_to_driver_ahead", "gear", "throttle", "brake", "drs", "speed", "rpm"], sessionID= self.sessionID, lastLoadedTime= self.lastLoadedTime)
+                if not driverStandingsEndFlag:
+                    lapData, self.lastLoadedLap, driverStandingsEndFlag = dbHandler.getLapsDataBlock(attributeList= ["driver", "team", "lap_number", "compound", "tyre_life", "position", "lap_start_time", "lap_end_time"], sessionID= self.sessionID, lastLoadedLap= self.lastLoadedLap )
+                    if lapData:
+                        self.signals.driverStandingsBlockChanged.emit(lapData)
 
-                # send data to data signals
-                self.signals.driverStandingsBlockChanged.emit(lapData)
-                self.signals.driverTelemBlockChanged.emit(driverTelem)
+                if not focusDriverEndFlag:
+                    driverTelem, self.lastLoadedTime, focusDriverEndFlag = dbHandler.getTelemetryDataBlock(attributeList= ["driver_code","session_time", "x_pos", "y_pos", "distance_to_driver_ahead", "gear", "throttle", "brake", "drs", "speed", "rpm"], sessionID= self.sessionID, lastLoadedTime= self.lastLoadedTime)
+                    if driverTelem:
+                        self.signals.driverTelemBlockChanged.emit(driverTelem)
 
-                # send data to playback signal
-                self.signals.currentAvailablePlaybackChanged.emit(self.lastLoadedTime)
+                    self.signals.currentAvailablePlaybackChanged.emit(self.lastLoadedTime)
         finally:
+            self.signals.finished_signal.emit(True)
             dbHandler.close()
 
 class FocusDriverVM(QObject):
@@ -113,16 +115,15 @@ class FocusDriverVM(QObject):
         return self.__currentFocusedDriversLoaded
 
 
-    def __init__(self):
+    def __init__(self, signals: BlockLoaderWorkerSignals):
         super().__init__()
         self.dbHandler = DBhandler()
-        self.focusedDrivers: set[str]
+        self.focusedDrivers: set[str] = set()
         self.currentData: dict
-        # need to define the object
-        self.sessionData: list
-        self.dataBlockSignals = BlockLoaderWorkerSignals()
+        self.sessionData: list[list[dict]] = []
+        self.dataBlockSignals = signals
         self.dataBlockSignals.driverTelemBlockChanged.connect(self.__dataBlockLoaded)
-
+        self.dataBlockSignals.finished_signal.connect(self.printLogger)
 
     def __clockTick(self):
         # for each driver in self.focusedDrivers grab data from table
@@ -131,10 +132,15 @@ class FocusDriverVM(QObject):
                 self.dbHandler.getDataFromTable()
             return
 
+    def printLogger(self):
+        """
+        _helper function to debug the data block loader_
+        """
+        print(f"data block loaded new data into session data for focusDriverVM, length of data: {len(self.sessionData)}")
+        #print(f"{self.sessionData}")
+
     def __dataBlockLoaded(self, newData: list):
         self.sessionData.append(newData)
-        print(f"data block loaded new data into session data for focusDriverVM")
-        print(f"{self.sessionData}")
         return
 
     def toggleFocusDriver(self, driverToToggle: str):
@@ -178,22 +184,33 @@ class DriverStandingsViewModel(QObject):
     def focused_driver_changed(self):
         return self.__focused_driver_loaded
 
-    def __init__(self, dbhandler: DBhandler | None = None):
+    # NOTE: I feel like we don't need the DBhandler to be passed down so I am removing it
+    def __init__(self, signals: BlockLoaderWorkerSignals = None):
         super().__init__()
-        self.dbhandler = dbhandler if dbhandler is not None else DBhandler()
-        self.__driver_data = []
+        self.dbhandler = DBhandler()
+        self.__driver_data: list = []
         self.__focused_driver = None
-        self.playControlsVM.updatedTime.connect(self.onClockUpdate)
-        self.dataBlockSignals = BlockLoaderWorkerSignals(self.__dataBlockLoaded)
-        self.dataBlockSignals.driverStandingsBlockChanged.connect()
+        #self.playControlsVM.updatedTime.connect(self.onClockUpdate)
+        self.dataBlockSignals = signals
+        self.dataBlockSignals.driverStandingsBlockChanged.connect(self.__dataBlockLoaded)
+        self.dataBlockSignals.finished_signal.connect(self.printLogger)
         # initialize the standing data to be empty this is what the UI will use for updating
         self.standingsData: list = []
-        
+        self.numDriver: int = 0
+
+
 
     def __onClockUpdate(self, newTime: float):
         # NOTE: driver standings should update every clock tick
         
         return
+    def printLogger(self):
+        """
+        _helper function to debug data block loader_
+        """
+        print(f"data block loaded new data into session data for DriverStandingsVM, length: {len(self.__driver_data)}")
+        #print(f"{self.__driver_data}")
+
     def __dataBlockLoaded(self, newData: list):
         self.__driver_data.append(newData)
         return

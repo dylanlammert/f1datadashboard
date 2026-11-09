@@ -6,6 +6,7 @@ from ViewModels.trackStatusVM import TrackStatusVM
 from ViewModels.simulationGraphVM import SimulationCanvas
 from ViewModels.sessionSelectorVM import SessionSelectorVM
 from ViewModels.connectivityVM import ConnectivityVM
+from ViewModels.driverStandingsVM import BlockLoaderWorkerSignals
 from PySide6.QtWidgets import (
     QGridLayout,
     QLabel,

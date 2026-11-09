@@ -26,6 +26,7 @@ from ViewModels.raceSimulationVM import PlayControlsVM
 from ViewModels.trackStatusVM import TrackStatusVM
 from ViewModels.sessionSelectorVM import SessionSelectorVM
 from ViewModels.connectivityVM import ConnectivityVM
+from ViewModels.driverStandingsVM import FocusDriverVM, DriverStandingsViewModel, BlockLoaderWorkerSignals
 
 # import dbhandler
 from Services.dbhandler import DBhandler
@@ -53,15 +54,21 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("F1 Data Analysis")
-        self.dbHandler = DBhandler()
+        # initialize driver standings and focus driver VMs
+        self.blockLoaderSignals = BlockLoaderWorkerSignals()
+
+        self.driverStandingsVM = DriverStandingsViewModel(signals=self.blockLoaderSignals)
+        self.focusDriverVM = FocusDriverVM(signals= self.blockLoaderSignals)
+
         # instantiate the VMs
         self.conectivityVM = ConnectivityVM()
         self.driverProfilesVM = DriverProfilesViewModel()
-        self.sessionSelectorVM = SessionSelectorVM(conectivityModel=self.conectivityVM)
+        self.sessionSelectorVM = SessionSelectorVM(conectivityModel=self.conectivityVM, signals= self.blockLoaderSignals)
         self.playControlsVM = PlayControlsVM(sessionSelectorVM=self.sessionSelectorVM)
         self.trackStatusVM = TrackStatusVM(
             playControlsVM=self.playControlsVM, sessionSelectorVM=self.sessionSelectorVM
         )
+        
         # set the main container
         mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
@@ -111,10 +118,12 @@ class MainWindow(QMainWindow):
         valid = isTokenValid()
         if valid is not None:
             self.sidebar.loginButton.setVisible(not valid)
-            self.sessionSelectorVM.userLoggedIn = False
+            self.sessionSelectorVM.userLoggedIn = valid
+            self.sessionSelectorVM.onLoggedIn(valid)
         if valid is None:
             self.sidebar.loginButton.setVisible(True)
             self.sessionSelectorVM.userLoggedIn = False
+            self.sessionSelectorVM.onLoggedIn(False)
 
 
 """
@@ -214,11 +223,8 @@ class LoginButton(QFrame):
 
     def openLogin(self):
         self.loginPage = LoginPage(connectionStatus=self.connectivityVM)
-        self.loginPage.form.loggedIn.connect(self.onLoggedIn)
+        self.loginPage.form.loggedIn.connect(self.sessionSelector.onLoggedIn)
         self.loginPage.show()
-
-    def onLoggedIn(self, success: bool):
-        self.sessionSelector.userLoggedin = success
 
 def _main():
     app = QApplication(sys.argv)
