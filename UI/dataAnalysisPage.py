@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt, Signal, QPointF, QSize
 from PySide6.QtGui import QPainter, QMouseEvent, QResizeEvent
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from graphs.placement_over_time import placement_figure_for_session
+from graphs.predicted_vs_actual_laps import build_lap_comparison_figure
 from graphs.graph_factory import Metric, GenericGraphFactory
 from Services.dbhandler import DBhandler
 from ViewModels.sessionSelectorVM import SessionSelectorVM
@@ -260,7 +261,8 @@ class GraphCanvasContainer(QWidget):
         self.graph_factories = {
             "Placement over Time": lambda: FigureCanvasQTAgg(
                 placement_figure_for_session(self.current_session_id)
-            )
+            ),
+            "Predicted vs Actual Lap Times": self._build_lap_comparison_canvas,
         }
 
         # ? This handles populating generic graphs into the graphs list.
@@ -273,6 +275,49 @@ class GraphCanvasContainer(QWidget):
         self.dropdown = SearchableGraphDropdown(list(self.graph_factories), self.view)
         self.view.set_overlay(self.dropdown)
         self.dropdown.textActivated.connect(self._on_graph_selected)
+
+
+    def _build_lap_comparison_canvas(self):
+        """Create a lap-time comparison for the selected session."""
+        import sqlite3
+        import matplotlib.pyplot as plt
+
+        try:
+            with sqlite3.connect(self.dbhandler.dbPath) as conn:
+                row = conn.execute(
+                    """
+                    SELECT driver
+                    FROM laps
+                    WHERE session_id = ?
+                    GROUP BY driver
+                    ORDER BY COUNT(*) DESC, driver
+                    LIMIT 1
+                    """,
+                    (self.current_session_id,),
+                ).fetchone()
+
+            if row is None:
+                raise ValueError("No lap data for this session.")
+
+            fig, _ = build_lap_comparison_figure(
+                session_id=self.current_session_id,
+                driver_code=row[0],
+                db_path=self.dbhandler.dbPath,
+            )
+            return FigureCanvasQTAgg(fig)
+
+        except (sqlite3.Error, ValueError, FileNotFoundError) as exc:
+            fig, ax = plt.subplots(figsize=(8, 4))
+            ax.text(
+                0.5, 0.5,
+                f"Lap comparison unavailable:\n{exc}",
+                ha="center",
+                va="center",
+                wrap=True,
+            )
+            ax.set_axis_off()
+            fig.tight_layout()
+            return FigureCanvasQTAgg(fig)
 
     def add_graph(
         self,
