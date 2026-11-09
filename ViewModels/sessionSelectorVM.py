@@ -18,6 +18,7 @@ class SessionSelectorVM(QObject):
     # Signals
     __currentSessionIDChanged = Signal(int)
     __availableListChanged = Signal(object)
+    __currentAvailablePlaybackChanged = Signal(float)
 
     @property
     def availableListChanged(self):
@@ -26,6 +27,10 @@ class SessionSelectorVM(QObject):
     @property
     def currentSessionIDChanged(self):
         return self.__currentSessionIDChanged
+
+    @property
+    def currentAvailablePlaybackChanged(self):
+        return self.__currentAvailablePlaybackChanged
 
     # first year that the fast f1 data is logged
     FIRST_YEAR = 2018
@@ -79,7 +84,7 @@ class SessionSelectorVM(QObject):
             worker.signal.finished_signal.connect(self.__onDownloadFinished)
             self.thread_pool.start(worker)
             #newSessionID = self.__createSessionInstance(self.__updateCurrentSessionID)
-    
+
     def __onDownloadFinished(self):
         info = self.pendingSessionInfo
 
@@ -93,8 +98,14 @@ class SessionSelectorVM(QObject):
 
     def __onSessionReady(self, sessionID: int):
         self.__updateCurrentSessionID(newSessionID= sessionID)
-
-        dataLoader = BlockLoader(sessionID= self.currentSessionID)
+        # start the worker
+        dataLoaderWorker = BlockLoader(sessionID= self.currentSessionID)
+        dataLoaderWorker.signals.currentAvailablePlaybackChanged.connect(
+            self.__currentAvailablePlaybackChanged.emit
+        )
+        self.__currentAvailablePlaybackChanged.emit(0.0)
+        self.thread_pool.start(dataLoaderWorker)
+        
 
     def __updateCurrentSessionID(self, newSessionID):
         self.currentSessionID = newSessionID

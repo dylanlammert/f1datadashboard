@@ -31,6 +31,7 @@ class PlayControlsVM(QObject):
 
     updatedTime = Signal(float)
     updatedRaceDuration = Signal(float)
+    updatedPlaybackBuffer = Signal(float)
     # this should probably be a property of play controls it will need to listen to changes
     updatedPlayingStatus = Signal(bool)
 
@@ -54,12 +55,18 @@ class PlayControlsVM(QObject):
         # NOTE: on application start we will want to change this VM to a paused start to begin
         # self.timer.start()
         self.sessionSelectorVM.currentSessionIDChanged.connect(self.fetchRaceDuration)
+        self.sessionSelectorVM.currentAvailablePlaybackChanged.connect(
+            self.__updatePlaybackBuffer
+        )
 
     def __tick(self):
         """_helper function that calls setCurrentTime everytime the timer is incremented_"""
         # print(f"timer = {self.currentTime + 1}")
         self.setCurrentTime(self.currentTime + self.playBackSpeed)
 
+    # NOTE: Might not need this instead just send the new time to the front end ui
+    def __updatePlaybackBuffer(self, updatedTime: float):
+        self.updatedPlaybackBuffer.emit(updatedTime)
     def togglePlay(self):
         """_function that updates the VM state to playing or paused depending on previous state_
 
@@ -131,11 +138,3 @@ class PlayControlsVM(QObject):
         return 0
 
 
-class RaceHandler(QObject):
-    """
-    This will initialize all of the drivers, track info, playControls
-
-    """
-
-    def __init__(self):
-        super().__init__()

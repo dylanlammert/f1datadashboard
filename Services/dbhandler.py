@@ -1166,6 +1166,7 @@ class DBhandler:
         Returns:
             _type_: _description_
         """
+        print(f"getLapsDataBlock: trying to grab data from laps from laps {lastLoadedLap} to laps{lastLoadedLap + blockSize} ")
         endFlag: bool = False
         currentLoadedLap: int = lastLoadedLap
         selectList = list(attributeList)
@@ -1188,9 +1189,14 @@ class DBhandler:
         # for each row in results take the column from attributeList and the data value from results
         rows = [dict(zip(selectList, row)) for row in results]
 
+        # No rows means there are no more laps in this block. Keep the prior
+        # cursor value so the caller can safely finish without max([]).
+        if not rows:
+            return rows, currentLoadedLap, True
+
         # current loaded lap
         currentLoadedLap = max(r["lap_number"] for r in rows)
-        
+
         # if the max lap number is smaller than lastLoadedLap + blockSize
         if (not rows) or (currentLoadedLap < (lastLoadedLap + blockSize)):
             # set the endflag
@@ -1214,6 +1220,7 @@ class DBhandler:
         Returns:
             _type_: _description_
         """
+        print(f"getTelemetryDataBlock: trying to get data from live_driver_telemetry from time {lastLoadedTime} to {lastLoadedTime + blockSize}")
         endFlag = False
         currentLoadedTime = lastLoadedTime
 
@@ -1237,13 +1244,18 @@ class DBhandler:
         # format the results into a list of dicts
         rows = [dict(zip(selectList, row)) for row in results]
 
-        # if max session time < lastloadedTime + blockSize then there is no more data to load
-        # find the highest loadedTime
-        currentLoadedTime = max(r["session_time"] for r in results)
-            
-        if (not rows) or ((currentLoadedTime) < (lastLoadedTime + blockSize)):
+        # The query returns tuples; use the dictionaries built above. Handle
+        # an empty block before calling max(), which would otherwise raise.
+        if not rows:
             endFlag = True
-        else: 
+            return rows, currentLoadedTime, endFlag
+
+        # if max session time < lastloadedTime + blockSize then there is no more data to load
+        currentLoadedTime = max(row["session_time"] for row in rows)
+
+        if currentLoadedTime < (lastLoadedTime + blockSize):
+            endFlag = True
+        else:
             #trim the last index from results
             rows = rows[: -1]
 

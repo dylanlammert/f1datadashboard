@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStyleFactory,
     QProgressBar,
+    QSizePolicy,
 )
 
 layoutColor: str = theme.info
@@ -144,14 +145,18 @@ class PlayControlsUI(Card):
 
     def __init__(self, playControlsController: PlayControlsVM):
         super().__init__()
-        self.setFixedHeight(60)
+        self.setFixedHeight(68)
+        # VMs
         self.playControlsVM = playControlsController
         self.raceDuration: float = 0.00
+        self.availablePlaybackTime: float = 0.00
         self.formattedTime: str = "00:00:00"
         self.SPEEDS: tuple = (1, 2, 4)
         # connect on duration change to the playControlsVM
         self.playControlsVM.updatedRaceDuration.connect(self.onDurationChange)
         self.playControlsVM.updatedTime.connect(self.onCurrentTimeChange)
+        # show buffer available
+        self.playControlsVM.updatedPlaybackBuffer.connect(self.onBufferUpdated)
         layout = QVBoxLayout(self)
         # scrub bar
         scrubRow = QHBoxLayout()
@@ -159,15 +164,59 @@ class PlayControlsUI(Card):
         # ? I had to change this to Qt.Orientation.Horizontal to get it to compile for some reason. Apparently it's a newer change with PySide6?
         # create the slider NOTE: might want to make this it's own class later on
         self.scrubSlider = QSlider(Qt.Orientation.Horizontal)
-        self.scrubSlider.setMinimumHeight(40)
+        self.scrubSlider.setMinimumHeight(28)
+        self.scrubSlider.setTracking(True)
         self.scrubSlider.setRange(0, 100)  # will be rescaled once duration is known
         self.durationLabel = QLabel(self.formattedTime)
+        self.bufferProgress = QProgressBar()
+        self.bufferProgress.setRange(0, 1000)
+        self.bufferProgress.setTextVisible(False)
+        self.bufferProgress.setFixedHeight(4)
+        self.bufferProgress.setStyleSheet(
+            f"""
+            QProgressBar {{
+                background-color: {theme.tertiaryText};
+                border: none;
+                border-radius: 2px;
+            }}
+            QProgressBar::chunk {{
+                background-color: {theme.info};
+                border-radius: 2px;
+            }}
+            """
+        )
+        self.scrubSlider.setStyleSheet(
+            f"""
+            QSlider::groove:horizontal {{
+                background: {theme.tertiaryText};
+                border: none;
+                height: 4px;
+                border-radius: 2px;
+            }}
+            QSlider::handle:horizontal {{
+                background-color: {theme.primaryText};
+                border: 1px solid {theme.background};
+                width: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
+            }}
+            """
+        )
+        sliderLayout = QVBoxLayout()
+        sliderLayout.setContentsMargins(6, 0, 6, 0)
+        sliderLayout.setSpacing(0)
+        sliderLayout.addWidget(self.scrubSlider)
+        sliderLayout.addWidget(self.bufferProgress)
+        sliderContainer = QWidget()
+        sliderContainer.setLayout(sliderLayout)
         # set the signal changes
         self.scrubSlider.valueChanged.connect(self._onSliderValueChanged)
         self.scrubSlider.sliderPressed.connect(self._onSliderPressed)
         self.scrubSlider.sliderReleased.connect(self._onSliderReleased)
         # is slider being messed with
         self.sliderInUse: bool = False
+        self.wasPlayingBeforeScrub: bool = False
+        
 
         # play functions
 
@@ -217,7 +266,7 @@ class PlayControlsUI(Card):
         scrubRow.addWidget(self.playButton, alignment=Qt.AlignmentFlag.AlignVCenter)
         scrubRow.addWidget(self.speedBox)
         scrubRow.addWidget(self.currentTimeLabel)
-        scrubRow.addWidget(self.scrubSlider, 1)
+        scrubRow.addWidget(sliderContainer, 1)
         scrubRow.addWidget(self.durationLabel)
         layout.addLayout(scrubRow)
 
@@ -233,21 +282,24 @@ class PlayControlsUI(Card):
             self.playButton.setText("▶")
 
     def _onSliderPressed(self):
-        """_stop the playControls timer from updating the timer while the user is messing with the slider_"""
-        # stop the slider from updating from currentTime changing
-        self.playControlsVM.timer.blockSignals(True)
+        """Pause playback while scrubbing so timer ticks cannot overwrite the seek."""
         self.sliderInUse = True
+        self.wasPlayingBeforeScrub = self.playControlsVM.getIsPlaying()
+        if self.wasPlayingBeforeScrub:
+            self.playControlsVM.togglePlay()
+            self.playButton.setText("▶")
 
     def _onSliderReleased(self):
-        """_unblock the playcontrols timer from updating_"""
-        # allow the slider to update from currentTime changing
-        self.playControlsVM.timer.blockSignals(False)
+        """Resume playback after scrubbing if it was playing before the drag."""
         self.sliderInUse = False
+        if self.wasPlayingBeforeScrub:
+            self.playControlsVM.togglePlay()
+            self.playButton.setText("⏸")
+        self.wasPlayingBeforeScrub = False
 
-    def _onSliderValueChanged(self):
-        """_set the playcontrolVM's timer to what the new value is_"""
-        # take time that slider displays then set the currentTime in the playControls VM
-        self.playControlsVM.setCurrentTime(self.scrubSlider.value())
+    def _onSliderValueChanged(self, value: int):
+        """Send each slider change to the playback VM so its consumers update."""
+        self.playControlsVM.setCurrentTime(float(value))
 
     def _onPlaybackSpeedChanged(self, index=1):
         """_update the playControlsVM's variable for the playback speed to the new value up to 4x_"""
@@ -280,6 +332,10 @@ class PlayControlsUI(Card):
         """
         time = self._formatTime(newCurrentTime)
         self.currentTimeLabel.setText(time)
+        if not self.sliderInUse:
+            wasBlocked = self.scrubSlider.blockSignals(True)
+            self.scrubSlider.setValue(round(newCurrentTime))
+            self.scrubSlider.blockSignals(wasBlocked)
 
     def onDurationChange(self, newDuration):
         # self.scrubSlider.blockSignals(True)
@@ -287,7 +343,17 @@ class PlayControlsUI(Card):
         self.formattedTime = self._formatTime(newDuration)
         self.scrubSlider.setRange(0, int(self.raceDuration))
         self.durationLabel.setText(self.formattedTime)
+        self.onBufferUpdated(self.availablePlaybackTime)
         # self.scrubSlider.blockSignals(False)
+    def onBufferUpdated(self, newTime: float):
+        self.availablePlaybackTime = max(0.0, min(newTime, self.raceDuration))
+        if self.raceDuration > 0:
+            progress = round(self.availablePlaybackTime / self.raceDuration * 1000)
+            self.bufferProgress.setValue(progress)
+        else:
+            self.bufferProgress.setValue(0)
+        return
+        
 
 
 class HomePage(QWidget):
@@ -313,6 +379,11 @@ class HomePage(QWidget):
         gridLayout.setSpacing(gridMargin)
         # setting the margins of the grid to a standard size
         gridLayout.setContentsMargins(gridMargin, gridMargin, gridMargin, gridMargin)
+        # Reserve flexible vertical space for the simulation instead of its controls.
+        for row in (1, 2, 3):
+            gridLayout.setRowStretch(row, 1)
+        for column in (0, 1, 2):
+            gridLayout.setColumnStretch(column, 1)
         # create the simulation frame
         driverSimFrame = DriverSIM(
             trackStatus=self.trackStatusController,
@@ -351,6 +422,10 @@ class DriverSIM(Card):
     ):
         super().__init__()
         self.raceSimCanvas = SimulationCanvas(sessionSelectorVM=sessionSelectorVM)
+        self.raceSimCanvas.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        self.raceSimCanvas.setMinimumSize(0, 0)
         self.setStyleSheet(f"""
             DriverSIM {{
                background-color: {theme.background}; 
@@ -364,7 +439,7 @@ class DriverSIM(Card):
         # create the playcontrols that will sit at the bottom row of the race sim
         self.playControlsUI = PlayControlsUI(playControlsController)
         # this will hold the simulated race
-        layout.addWidget(self.raceSimCanvas)
+        layout.addWidget(self.raceSimCanvas, 1)
         self.trackStatusCard = TrackStatusCard(trackStatus)
         self.trackStatusCard.setParent(self)
         self.trackStatusCard.raise_()

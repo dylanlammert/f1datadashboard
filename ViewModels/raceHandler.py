@@ -5,3 +5,4 @@ class RaceHandler(QObject):
     """
     _This is the object that will handle the signals and communication between each VM, I am just losing my mind rn_
     """
+    
