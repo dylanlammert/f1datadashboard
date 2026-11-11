@@ -223,8 +223,12 @@ class LoginButton(QFrame):
 
     def openLogin(self):
         self.loginPage = LoginPage(connectionStatus=self.connectivityVM)
-        self.loginPage.form.loggedIn.connect(self.sessionSelector.onLoggedIn)
+        self.loginPage.form.loggedIn.connect(self.onLoginStatusChanged)
         self.loginPage.show()
+
+    def onLoginStatusChanged(self, isLoggedIn: bool):
+        self.setVisible(not isLoggedIn)
+        self.sessionSelector.onLoggedIn(isLoggedIn)
 
 def _main():
     app = QApplication(sys.argv)

@@ -1181,7 +1181,7 @@ class DBhandler:
         dbQuery = (
             f"SELECT {attributes} FROM laps "
             f"WHERE session_id = ? AND lap_number > ? AND lap_number <= ? "
-            f"ORDER BY lap_number, driver "
+            f"ORDER BY lap_number, position, lap_start_time"
         )
         cursor.execute(dbQuery, (sessionID, lastLoadedLap, lastLoadedLap + blockSize))
         results = cursor.fetchall()

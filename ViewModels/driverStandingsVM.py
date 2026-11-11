@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import sys
 from PySide6.QtCore import QObject, Signal, QThreadPool, QRunnable
 from Services.dbhandler import DBhandler
 
@@ -23,6 +23,10 @@ TODO:
     
 
 """
+greenColor = "\033[92m"
+resetColor = "\033[0m"
+redColor = "\033[91m"
+
 class BlockLoaderWorkerSignals(QObject):
     __allBlocksLoaded = Signal(bool)
     
@@ -136,7 +140,7 @@ class FocusDriverVM(QObject):
         """
         _helper function to debug the data block loader_
         """
-        print(f"data block loaded new data into session data for focusDriverVM, length of data: {len(self.sessionData)}")
+        print(f"data block loaded new data into session data for focusDriverVM, length of data: {sys.getsizeof(self.sessionData)}")
         #print(f"{self.sessionData}")
 
     def __dataBlockLoaded(self, newData: list):
@@ -197,21 +201,59 @@ class DriverStandingsViewModel(QObject):
         # initialize the standing data to be empty this is what the UI will use for updating
         self.standingsData: list = []
         self.numDriver: int = 0
+        self.currentLeaderEndLapTime: float = 0.00
+        self.currentLeaderStartLapTime: float = 0.00
+        self.currentLap: int = 0
 
 
 
+    # NOTE: You are working here 11/ 10/ 2026
     def __onClockUpdate(self, newTime: float):
         # NOTE: driver standings should update every clock tick
-        
+        # check if time is > time current lap end time then update standings
+        if newTime > self.currentLeaderStartLapTime:
+            # update standings format as list[0] leader then > from there
+            #self.currentLap = 
+            print("stub so app compiles")
         return
+
+    def searchCurrentLap(self, time: float) -> int:
+        """_search for current lap_
+
+        Args:
+            time (float): _current playback time_
+        """
+        block: int
+        # case #1 lap could be found
+        for block in self.__driver_data:
+            if (time > block[0]["lap_start_time"]) & (time < block[-1]["lap_start_time"]):
+                # then current lap is within this block
+                for lap in block:
+                    if (time > lap["lap_start_time"]) & (time < lap["lap_end_time"]):
+                        # then lap is found
+                        return lap["lap_number"]
+        # case #2 lap couldn't be found
+        print(f"{redColor} lap could not be found: either no more updates or buffer is not finished loading {resetColor}")
+        return -1
+            
+
+
     def printLogger(self):
         """
         _helper function to debug data block loader_
         """
-        print(f"data block loaded new data into session data for DriverStandingsVM, length: {len(self.__driver_data)}")
+        print(f"data block loaded new data into session data for DriverStandingsVM, length: {sys.getsizeof(self.__driver_data)}")
+        for i in self.__driver_data:
+            print(i[0])
         #print(f"{self.__driver_data}")
 
+
     def __dataBlockLoaded(self, newData: list):
+        """_this loads the data block into the list as a whole block not as an individual level_
+
+        Args:
+            newData (list): _data block to be appended_
+        """
         self.__driver_data.append(newData)
         return
     def get_driver_data(self) -> list[dict]:
