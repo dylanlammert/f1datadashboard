@@ -185,7 +185,7 @@ def _main():
         get_race(2026, "Japanese Grand Prix", "R")
 
     window = MainWindow()
-    window.resize(700, 300)
+    window.showMaximized()
     window.show()
     sys.exit(app.exec())
 

@@ -68,8 +68,14 @@ class DragHeader(QWidget):
 
     def __init__(self, title: str, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(28)
-        self.setStyleSheet("background-color: #3a3a3a; color: white;")
+        self.setFixedHeight(32)
+        self.setStyleSheet("""
+            background-color: #3a3a3a; color: white;
+            border-top-left-radius: 7px;
+            border-top-right-radius: 7px;
+            color: #ffffff;
+            font-weight: bold;
+        """)
         # ? Cursor shape that tells the user they can move this object in any direction
         self.setCursor(Qt.CursorShape.SizeAllCursor)
 
@@ -82,6 +88,20 @@ class DragHeader(QWidget):
         # ? Close button in the top right
         self.close_btn = QPushButton("x")
         self.close_btn.setFixedSize(20, 20)
+        self.close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #a0a0b0;
+                border: none;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #e33d3d;
+                color: #ffffff;
+                border-radius: 4px;
+            }
+        """)
         self.close_btn.setCursor(Qt.CursorShape.ArrowCursor)
         layout.addWidget(self.close_btn)
 
@@ -128,7 +148,12 @@ class ResizeGrip(QWidget):
         super().__init__(parent)
         self.setFixedSize(16, 16)
         self.setCursor(Qt.CursorShape.SizeFDiagCursor)
-        self.setStyleSheet("background-color: #555;")
+        self.setStyleSheet("""
+            ResizeGrip {
+                background-color: transparent;
+                color: #555566;
+            }
+        """)
         self._press_global = None
         self._press_size = None
 
@@ -168,7 +193,13 @@ class GraphPanel(QFrame):
     def __init__(self, title: str, canvas: QWidget, parent=None):
         super().__init__(parent)
         self.setObjectName("graphPanel")
-        self.setStyleSheet("#graphPanel { background-color: #1e1e1e; }")
+        self.setStyleSheet("""
+            #graphPanel { 
+                background-color: #1e1e1e;
+                border: 1px solid #2a2a3c;
+                border-radius: 8px;
+            }
+        """)
         self.setMinimumSize(300, 200)
 
         self.header = DragHeader(title)
@@ -253,6 +284,15 @@ class GraphCanvasContainer(QWidget):
         self.view.on_graph_pressed = self._bring_to_front
         layout.addWidget(self.view)
 
+        self.empty_label = QLabel("Select a graph from the dropdown to start analyzing session data.", self.view)
+        self.empty_label.setStyleSheet("""
+            color: #a0a0b0;
+            font-size: 18px;
+            font-weight: bold;
+            background-color: transparent;
+        """)
+        self.empty_label.adjustSize()
+
         self.active_graphs: dict[str, QGraphicsProxyWidget] = {}
         self._z_counter = 0
 
@@ -273,6 +313,8 @@ class GraphCanvasContainer(QWidget):
         self.dropdown = SearchableGraphDropdown(list(self.graph_factories), self.view)
         self.view.set_overlay(self.dropdown)
         self.dropdown.textActivated.connect(self._on_graph_selected)
+
+        self._update_empty_state()
 
     def add_graph(
         self,
@@ -295,12 +337,18 @@ class GraphCanvasContainer(QWidget):
         self.scene.addItem(proxy)
         self.active_graphs[graph_id] = proxy
         self._bring_to_front(proxy)
+        self._update_empty_state()
 
     def remove_graph(self, graph_id: str):
         proxy = self.active_graphs.pop(graph_id, None)
         if proxy:
             self.scene.removeItem(proxy)
             proxy.deleteLater()
+        self._update_empty_state()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._update_empty_state()
 
     def _bring_to_front(self, proxy):
         # ? Prevents the z-value from incrementing too high.
@@ -323,3 +371,16 @@ class GraphCanvasContainer(QWidget):
 
     def _onSessionChanged(self, session_id: int) -> None:
         self.current_session_id = session_id
+
+    # TODO: For some reason, on startup, the label ends up in the middle left of the view? I'm not really sure what the deal is. 
+    # TODO:     I'm ignoring it, but it might be something to look at later.
+    def _update_empty_state(self):
+        is_empty = len(self.active_graphs) == 0
+        self.empty_label.setVisible(is_empty)
+        if is_empty:
+            vp_rect = self.view.viewport().rect()
+            label_size = self.empty_label.size()
+            x = (vp_rect.width() - label_size.width()) // 2
+            y = (vp_rect.height() - label_size.height()) // 2
+            self.empty_label.move(x, y)
+            self.empty_label.raise_()
