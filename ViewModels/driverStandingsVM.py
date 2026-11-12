@@ -1,7 +1,12 @@
 from __future__ import annotations
 import sys
+from typing import TYPE_CHECKING
 from PySide6.QtCore import QObject, Signal, QThreadPool, QRunnable
 from Services.dbhandler import DBhandler
+
+
+if TYPE_CHECKING:
+    from ViewModels.raceSimulationVM import PlayControlsVM
 
 """
 NOTE:
@@ -189,7 +194,7 @@ class DriverStandingsViewModel(QObject):
         return self.__focused_driver_loaded
 
     # NOTE: I feel like we don't need the DBhandler to be passed down so I am removing it
-    def __init__(self, signals: BlockLoaderWorkerSignals = None):
+    def __init__(self, playControlsVM: PlayControlsVM, signals: BlockLoaderWorkerSignals = None):
         super().__init__()
         self.dbhandler = DBhandler()
         self.__driver_data: list = []
@@ -198,45 +203,82 @@ class DriverStandingsViewModel(QObject):
         self.dataBlockSignals = signals
         self.dataBlockSignals.driverStandingsBlockChanged.connect(self.__dataBlockLoaded)
         self.dataBlockSignals.finished_signal.connect(self.printLogger)
+
+        playControlsVM.updatedTime.connect(self.__onClockUpdate)
         # initialize the standing data to be empty this is what the UI will use for updating
+        # [position]{"driver code", "team", "time behind leader"}
         self.standingsData: list = []
         self.numDriver: int = 0
         self.currentLeaderEndLapTime: float = 0.00
         self.currentLeaderStartLapTime: float = 0.00
         self.currentLap: int = 0
+        
 
-
-
-    # NOTE: You are working here 11/ 10/ 2026
     def __onClockUpdate(self, newTime: float):
         # NOTE: driver standings should update every clock tick
         # check if time is > time current lap end time then update standings
-        if newTime > self.currentLeaderStartLapTime:
+        if (newTime < self.currentLeaderStartLapTime) or (newTime > self.currentLeaderEndLapTime):
             # update standings format as list[0] leader then > from there
-            #self.currentLap = 
-            print("stub so app compiles")
+            currentLap = self.searchCurrentLap(newTime)
+            if currentLap is None:
+                return
+            self.currentLap, self.currentLeaderStartLapTime, self.currentLeaderEndLapTime = currentLap
+            # once current lap set, set standings data that will be sent to front end
+            self.setStandingsData()
+            self.standings_changed.emit(self.standingsData)
         return
+    
+    def setStandingsData(self):
+        """_format the standings data and pass it to the front end_
+        """
+        driversOnLap: list[dict] = []
+        for block in self.__driver_data:
+            driversOnLap.extend(
+                row for row in block if row.get("lap_number") == self.currentLap
+            )
 
-    def searchCurrentLap(self, time: float) -> int:
-        """_search for current lap_
+        driversOnLap.sort(
+            key=lambda row: (
+                row.get("position") is None,
+                row.get("position") if row.get("position") is not None else float("inf"),
+            )
+        )
+        self.standingsData = [
+            {
+                "position": row.get("position"),
+                "driverCode": row.get("driver"),
+                "team": row.get("team"),
+                "timeBehind": (
+                    row["lap_start_time"] - self.currentLeaderStartLapTime
+                    if row.get("lap_start_time") is not None
+                    else None
+                ),
+            }
+            for row in driversOnLap
+        ]
 
+    def searchCurrentLap(self, time: float) -> tuple[int, float, float] | None:
+        """_search for current lap of leading driver based on time given_
         Args:
             time (float): _current playback time_
+        
         """
-        block: int
-        # case #1 lap could be found
         for block in self.__driver_data:
-            if (time > block[0]["lap_start_time"]) & (time < block[-1]["lap_start_time"]):
-                # then current lap is within this block
-                for lap in block:
-                    if (time > lap["lap_start_time"]) & (time < lap["lap_end_time"]):
-                        # then lap is found
-                        return lap["lap_number"]
-        # case #2 lap couldn't be found
-        print(f"{redColor} lap could not be found: either no more updates or buffer is not finished loading {resetColor}")
-        return -1
-            
+            for lap in block:
+                lapStart = lap.get("lap_start_time")
+                lapEnd = lap.get("lap_end_time")
+                if (
+                    lap.get("position") == 1
+                    and lapStart is not None
+                    and lapEnd is not None
+                    and lapStart <= time < lapEnd
+                ):
+                    return lap["lap_number"], lapStart, lapEnd
 
+        print(
+            f"{redColor} lap could not be found: either no more updates or buffer is not finished loading {resetColor}"
+        )
+        return None
 
     def printLogger(self):
         """
@@ -256,6 +298,7 @@ class DriverStandingsViewModel(QObject):
         """
         self.__driver_data.append(newData)
         return
+    
     def get_driver_data(self) -> list[dict]:
         return [row.copy() for row in self.__driver_data]
 

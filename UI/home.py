@@ -6,7 +6,7 @@ from ViewModels.trackStatusVM import TrackStatusVM
 from ViewModels.simulationGraphVM import SimulationCanvas
 from ViewModels.sessionSelectorVM import SessionSelectorVM
 from ViewModels.connectivityVM import ConnectivityVM
-from ViewModels.driverStandingsVM import BlockLoaderWorkerSignals
+from ViewModels.driverStandingsVM import BlockLoaderWorkerSignals, DriverStandingsViewModel
 from PySide6.QtWidgets import (
     QGridLayout,
     QLabel,
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QStyleFactory,
     QProgressBar,
+    QScrollArea,
     QSizePolicy,
 )
 
@@ -366,12 +367,14 @@ class HomePage(QWidget):
         playControlsViewModel: PlayControlsVM,
         sessionSelectorViewModel: SessionSelectorVM,
         conectivityViewModel: ConnectivityVM,
+        driverStandingsVM : DriverStandingsViewModel
     ):
         super().__init__()
         # share the mem location of VMs
         self.trackStatusController = trackStatusViewModel
         self.playControlsController = playControlsViewModel
         self.sessionSelectorController = sessionSelectorViewModel
+        self.driverStandingsVM = driverStandingsVM
 
         # make a grid layout of 13x11ish
         # grid layout (rowstart, colstart, spanrows, spancols)
@@ -396,7 +399,7 @@ class HomePage(QWidget):
         sessionFrame = SessionSelector(sessionSelectorViewModel, conectivityViewModel)
         gridLayout.addWidget(sessionFrame, 0, 0, 1, 3)
         # create the driver placement UI
-        driverStandingsFrame = DriverStandings()
+        driverStandingsFrame = DriverStandings(driverStandingsVM = self.driverStandingsVM)
         gridLayout.addWidget(driverStandingsFrame, 0, 3, 4, 1)
         # create the focussed driver telemetry card
         driverTelemetryCard1 = DriverTelemetry()
@@ -446,20 +449,124 @@ class DriverSIM(Card):
         self.trackStatusCard.raise_()
         layout.addWidget(self.playControlsUI)
 
+class DriverCard(Card):
+    def __init__(
+        self,
+        driverCode: str,
+        driverTeam: str,
+        timeBehind: float | str | None,
+        position: int = 1,
+    ):
+        super().__init__()
+        self.setMinimumHeight(52)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(padding, 6, padding, 6)
+        layout.setSpacing(padding)
+
+        positionLabel = QLabel(f"P{position}")
+        positionLabel.setFixedWidth(30)
+        positionLabel.setStyleSheet(
+            f"background: transparent; color: {theme.primaryText}; font-weight: bold;"
+        )
+
+        driverLabel = QLabel(driverCode)
+        driverLabel.setStyleSheet(
+            f"background: transparent; color: {theme.primaryText}; font-weight: bold;"
+        )
+
+        teamLabel = QLabel(driverTeam or "Unknown team")
+        teamLabel.setStyleSheet(
+            f"background: transparent; color: {theme.secondaryText};"
+        )
+
+        gapLabel = QLabel(self._formatGap(timeBehind, position))
+        gapLabel.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        gapLabel.setStyleSheet(
+            f"background: transparent; color: {theme.primaryText}; font-weight: bold;"
+        )
+
+        layout.addWidget(positionLabel)
+        layout.addWidget(driverLabel)
+        layout.addWidget(teamLabel, 1)
+        layout.addWidget(gapLabel)
+
+    @staticmethod
+    def _formatGap(timeBehind: float | str | None, position: int) -> str:
+        if position == 1:
+            return "LEADER"
+        if timeBehind is None:
+            return "--"
+        if isinstance(timeBehind, (int, float)):
+            return f"+{timeBehind:.3f}s"
+        return str(timeBehind)
 
 class DriverStandings(Card):
     """
     _this holds all of the Driver Cards for a specified race_
     """
 
-    def __init__(self):
+    def __init__(self, driverStandingsVM: DriverStandingsViewModel):
         super().__init__()
-        # create and add a label for layout purposes
+        self.driverStandingsVM = driverStandingsVM
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Driver Standings"))
+        title = QLabel("Driver Standings")
+        title.setStyleSheet(
+            f"background: transparent; color: {theme.primaryText}; font-weight: bold;"
+        )
+        layout.addWidget(title)
 
-    def _standingsBuilder(self):
-        return
+        self.standingsList = QVBoxLayout()
+        self.standingsList.setContentsMargins(0, 0, 0, 0)
+        self.standingsList.setSpacing(6)
+        self.standingsContainer = QWidget()
+        self.standingsContainer.setStyleSheet("background: transparent;")
+        self.standingsContainer.setLayout(self.standingsList)
+
+        scrollArea = QScrollArea()
+        scrollArea.setWidgetResizable(True)
+        scrollArea.setFrameShape(QFrame.Shape.NoFrame)
+        scrollArea.setStyleSheet("background: transparent;")
+        scrollArea.setWidget(self.standingsContainer)
+        layout.addWidget(scrollArea)
+
+        self._showEmptyState()
+        self.driverStandingsVM.standings_changed.connect(self.standingsBuilder)
+
+    def standingsBuilder(self, standingsList: list):
+        self._clearStandings()
+        if not standingsList:
+            self._showEmptyState()
+            return
+
+        for position, driver in enumerate(standingsList, start=1):
+            driverCode = driver.get("driverCode", driver.get("driver_code")) or "???"
+            team = driver.get("team") or "Unknown team"
+            timeBehind = driver.get("timeBehind", driver.get("time_behind"))
+            self.standingsList.addWidget(
+                DriverCard(
+                    driverCode=str(driverCode),
+                    driverTeam=str(team),
+                    timeBehind=timeBehind,
+                    position=driver.get("position", position),
+                )
+            )
+        self.standingsList.addStretch()
+
+    def _clearStandings(self) -> None:
+        while self.standingsList.count():
+            item = self.standingsList.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _showEmptyState(self) -> None:
+        emptyLabel = QLabel("No driver standings available.")
+        emptyLabel.setWordWrap(True)
+        emptyLabel.setStyleSheet(
+            f"background: transparent; color: {theme.secondaryText};"
+        )
+        self.standingsList.addWidget(emptyLabel)
+        self.standingsList.addStretch()
 
 # UI helper 
 def _telemetryLabel(text: str, size: int = 11, color: str | None = None, bold: bool = False) -> QLabel:

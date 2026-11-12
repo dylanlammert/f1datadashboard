@@ -54,20 +54,21 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("F1 Data Analysis")
-        # initialize driver standings and focus driver VMs
-        self.blockLoaderSignals = BlockLoaderWorkerSignals()
-
-        self.driverStandingsVM = DriverStandingsViewModel(signals=self.blockLoaderSignals)
-        self.focusDriverVM = FocusDriverVM(signals= self.blockLoaderSignals)
-
         # instantiate the VMs
+        self.blockLoaderSignals = BlockLoaderWorkerSignals()
         self.conectivityVM = ConnectivityVM()
         self.driverProfilesVM = DriverProfilesViewModel()
-        self.sessionSelectorVM = SessionSelectorVM(conectivityModel=self.conectivityVM, signals= self.blockLoaderSignals)
+        self.sessionSelectorVM = SessionSelectorVM(
+            conectivityModel=self.conectivityVM, signals=self.blockLoaderSignals
+        )
         self.playControlsVM = PlayControlsVM(sessionSelectorVM=self.sessionSelectorVM)
         self.trackStatusVM = TrackStatusVM(
             playControlsVM=self.playControlsVM, sessionSelectorVM=self.sessionSelectorVM
         )
+        self.driverStandingsVM = DriverStandingsViewModel(
+            playControlsVM=self.playControlsVM, signals=self.blockLoaderSignals
+        )
+        self.focusDriverVM = FocusDriverVM(signals=self.blockLoaderSignals)
         
         # set the main container
         mainContainer = QWidget()
@@ -89,6 +90,7 @@ class MainWindow(QMainWindow):
             playControlsViewModel=self.playControlsVM,
             sessionSelectorViewModel=self.sessionSelectorVM,
             conectivityViewModel=self.conectivityVM,
+            driverStandingsVM=self.driverStandingsVM,
         )
         self.settings = GraphCanvasContainer(session_selector=self.sessionSelectorVM)
         # Removed the dbHandler object since the UI shouldn't be exposed to it (traditionally). If there's a reason it was here,
