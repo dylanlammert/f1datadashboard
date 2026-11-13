@@ -31,6 +31,10 @@ class DayTheme:
     danger: str = "#e33d3d"
     info: str = "#3e85d1"
     safety: str = "#ff9334"
+    # loggers
+    greenColor: str = "\033[92m"
+    resetColor: str = "\033[0m"
+    redColor: str = "\033[91m"
 
 
 

@@ -6,7 +6,11 @@ from ViewModels.trackStatusVM import TrackStatusVM
 from ViewModels.simulationGraphVM import SimulationCanvas
 from ViewModels.sessionSelectorVM import SessionSelectorVM
 from ViewModels.connectivityVM import ConnectivityVM
-from ViewModels.driverStandingsVM import BlockLoaderWorkerSignals, DriverStandingsViewModel
+from ViewModels.driverStandingsVM import (
+    BlockLoaderWorkerSignals,
+    DriverStandingsViewModel,
+    FocusDriverVM,
+)
 from PySide6.QtWidgets import (
     QGridLayout,
     QLabel,
@@ -238,7 +242,7 @@ class PlayControlsUI(Card):
         "background-color: #e10600; color: white; font-weight: bold; }"
         "QPushButton:hover { background-color: #ff1e17; }"
         """
-
+        self.playControlsVM.updatedPlayingStatus.connect(self.updatePlayButtonValue)
         self.playButton.clicked.connect(self._onClickPlay)
 
         # change playback speed
@@ -278,7 +282,9 @@ class PlayControlsUI(Card):
         """_send a signal to the playcontrolVM to stop the clock_"""
         print("user clicked play/pause")
         self.playControlsVM.togglePlay()
-        if self.playControlsVM.getIsPlaying():
+
+    def updatePlayButtonValue(self, toggleValue):
+        if toggleValue == True:
             self.playButton.setText("⏸")
         else:
             self.playButton.setText("▶")
@@ -367,7 +373,8 @@ class HomePage(QWidget):
         playControlsViewModel: PlayControlsVM,
         sessionSelectorViewModel: SessionSelectorVM,
         conectivityViewModel: ConnectivityVM,
-        driverStandingsVM : DriverStandingsViewModel
+        driverStandingsVM: DriverStandingsViewModel,
+        focusDriverVM: FocusDriverVM,
     ):
         super().__init__()
         # share the mem location of VMs
@@ -375,6 +382,7 @@ class HomePage(QWidget):
         self.playControlsController = playControlsViewModel
         self.sessionSelectorController = sessionSelectorViewModel
         self.driverStandingsVM = driverStandingsVM
+        self.focusDriverVM = focusDriverVM
 
         # make a grid layout of 13x11ish
         # grid layout (rowstart, colstart, spanrows, spancols)
@@ -394,23 +402,29 @@ class HomePage(QWidget):
             playControlsController=self.playControlsController,
             sessionSelectorVM=self.sessionSelectorController,
         )
-        gridLayout.addWidget(driverSimFrame, 1, 0, 3, 3)
+        gridLayout.addWidget(driverSimFrame, 1, 0, 3, 2)
         # create the session selector
         sessionFrame = SessionSelector(sessionSelectorViewModel, conectivityViewModel)
-        gridLayout.addWidget(sessionFrame, 0, 0, 1, 3)
+        gridLayout.addWidget(sessionFrame, 0, 0, 1, 2)
         # create the driver placement UI
         driverStandingsFrame = DriverStandings(driverStandingsVM = self.driverStandingsVM)
-        gridLayout.addWidget(driverStandingsFrame, 0, 3, 4, 1)
+        gridLayout.addWidget(driverStandingsFrame, 0, 2, 4, 2)
         # create the focussed driver telemetry card
-        driverTelemetryCard1 = DriverTelemetry()
-        gridLayout.addWidget(driverTelemetryCard1, 4, 0, 1, 4)
-        # create the 2nd focussed driver telemetry card
-        driverTelemetryCard2 = DriverTelemetry()
-        gridLayout.addWidget(driverTelemetryCard2, 5, 0, 1, 4)
+        self.driverTelemetryCards = [DriverTelemetry(), DriverTelemetry()]
+        for row, telemetryCard in enumerate(self.driverTelemetryCards, start=4):
+            gridLayout.addWidget(telemetryCard, row, 0, 1, 4)
+        self.focusDriverVM.currentDataChanged.connect(
+            self.updateFocusedDriverTelemetry
+        )
         # NOTE: this should not control this, make playControls fetch this on init call the playControlsVM to fetch the race duration
         self.playControlsController.fetchRaceDuration(
             self.sessionSelectorController.currentSessionID
         )
+
+    def updateFocusedDriverTelemetry(self, currentData: list[dict]) -> None:
+        for index, telemetryCard in enumerate(self.driverTelemetryCards):
+            data = currentData[index] if index < len(currentData) else None
+            telemetryCard.updateTelemetry(data)
 
 
 class DriverSIM(Card):
@@ -449,7 +463,17 @@ class DriverSIM(Card):
         self.trackStatusCard.raise_()
         layout.addWidget(self.playControlsUI)
 
-class DriverCard(Card):
+class DriverCard(QPushButton):
+    """_card to hold driver data within the driver standings ui component_
+
+    Args:
+        Card (_type_): _description_
+
+    NOTE: 
+    * This needs to be a button to update the focused driver VM aswell 
+    * If a single driver card is clicked it needs to ask the VM to change focusDrivers if it does then it needs to change the color of the card
+    * 
+    """
     def __init__(
         self,
         driverCode: str,
@@ -458,7 +482,29 @@ class DriverCard(Card):
         position: int = 1,
     ):
         super().__init__()
-        self.setMinimumHeight(52)
+        self.setMinimumHeight(40)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setAccessibleName(f"Focus {driverCode}")
+        self.setToolTip(f"Focus on {driverCode}")
+        self.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {theme.background};
+                border: none;
+                border-radius: {borderRadius}px;
+                text-align: left;
+            }}
+            QPushButton:hover {{
+                background-color: {theme.info};
+            }}
+            QPushButton[focused="true"] {{
+                background-color: {theme.info};
+            }}
+            QPushButton:focus {{
+                border: 1px solid {theme.info};
+            }}
+            """
+        )
         layout = QHBoxLayout(self)
         layout.setContentsMargins(padding, 6, padding, 6)
         layout.setSpacing(padding)
@@ -490,6 +536,12 @@ class DriverCard(Card):
         layout.addWidget(teamLabel, 1)
         layout.addWidget(gapLabel)
 
+    def setFocused(self, focused: bool) -> None:
+        self.setProperty("focused", focused)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
+
     @staticmethod
     def _formatGap(timeBehind: float | str | None, position: int) -> str:
         if position == 1:
@@ -499,6 +551,7 @@ class DriverCard(Card):
         if isinstance(timeBehind, (int, float)):
             return f"+{timeBehind:.3f}s"
         return str(timeBehind)
+
 
 class DriverStandings(Card):
     """
@@ -538,18 +591,27 @@ class DriverStandings(Card):
             self._showEmptyState()
             return
 
+        currentFocusDrivers = self.driverStandingsVM.getFocusDrivers()
         for position, driver in enumerate(standingsList, start=1):
             driverCode = driver.get("driverCode", driver.get("driver_code")) or "???"
             team = driver.get("team") or "Unknown team"
             timeBehind = driver.get("timeBehind", driver.get("time_behind"))
-            self.standingsList.addWidget(
-                DriverCard(
-                    driverCode=str(driverCode),
-                    driverTeam=str(team),
-                    timeBehind=timeBehind,
-                    position=driver.get("position", position),
-                )
+            driverCard = DriverCard(
+                driverCode=str(driverCode),
+                driverTeam=str(team),
+                timeBehind=timeBehind,
+                position=driver.get("position", position),
             )
+            if driverCode in currentFocusDrivers:
+                driverCard.setFocused(True)
+
+            driverCard.clicked.connect(
+                lambda _checked=False, code=str(driverCode), card=driverCard:
+                    card.setFocused(
+                        self.driverStandingsVM.onDriverToggled(code)
+                    )
+            )
+            self.standingsList.addWidget(driverCard)
         self.standingsList.addStretch()
 
     def _clearStandings(self) -> None:
@@ -719,14 +781,14 @@ class DataRow(QHBoxLayout):
         self.gearCard = StatCard("Gear", "__", valueColor= theme.success)
         self.rpmCard = StatCard("RPM", "__", valueSize= 20)
         self.throttleMeter = MeterBar("Throttle Pressure", theme.success)
-        self.breakCard = StatCard("breaks", "__", valueColor= theme.danger)
-        self.fuelCard = StatCard("Estimated Fuel", "__", valueColor= theme.warning )
+        self.breakCard = StatCard("Brakes", "--", valueColor= theme.danger)
+        self.drsCard = StatCard("DRS", "--", valueColor= theme.warning)
         self.addWidget(self.speedCard)
         self.addWidget(self.gearCard)
         self.addWidget(self.rpmCard)
         self.addWidget(self.throttleMeter)
         self.addWidget(self.breakCard)
-        self.addWidget(self.fuelCard)
+        self.addWidget(self.drsCard)
 
 class DriverTelemetry(Card):
     """
@@ -746,15 +808,13 @@ class DriverTelemetry(Card):
     def __init__(self):
         super().__init__()
         self.setMaximumHeight(100)
-        # create and add a label for layout purposes
         layout = QVBoxLayout(self)
 
-        driverRow = DriverRow()
-        layout.addLayout(driverRow)
+        self.driverRow = DriverRow()
+        layout.addLayout(self.driverRow)
 
-        data = DataRow()
-        layout.addLayout(data)
-        layout.addLayout(data)
+        self.dataRow = DataRow()
+        layout.addLayout(self.dataRow)
 
     # builder for the lap data in driver telem top right side
     def __lapBlock(self, title:str, color: str = theme.secondaryText) -> {QVBoxLayout, QLabel}:
@@ -767,8 +827,49 @@ class DriverTelemetry(Card):
         layout.addWidget(lapValue, alignment= Qt.AlignmentFlag.AlignRight)
         return layout, lapValue
 
-    def updateTelemetry() -> None:
-        print("stub")
+    def updateTelemetry(self, data: dict | None) -> None:
+        if not data:
+            self.driverRow.driverBadge.setText("No Driver")
+            self.driverRow.competitorLabel.setText("Closest Competitor | --")
+            self.dataRow.speedCard.setValue("--")
+            self.dataRow.gearCard.setValue("--")
+            self.dataRow.rpmCard.setValue("--")
+            self.dataRow.throttleMeter.setPercent(0)
+            self.dataRow.breakCard.setValue("--")
+            self.dataRow.drsCard.setValue("--")
+            return
+
+        driverCode = data.get("driver_code") or "Unknown Driver"
+        self.driverRow.driverBadge.setText(str(driverCode))
+        distance = data.get("distance_to_driver_ahead")
+        self.driverRow.competitorLabel.setText(
+            "Closest Competitor | "
+            + (f"{distance:.1f}" if isinstance(distance, (int, float)) else "--")
+        )
+        self.dataRow.speedCard.setValue(self._formatValue(data.get("speed")))
+        self.dataRow.gearCard.setValue(self._formatValue(data.get("gear")))
+        self.dataRow.rpmCard.setValue(self._formatValue(data.get("rpm")))
+
+        throttle = data.get("throttle")
+        self.dataRow.throttleMeter.setPercent(
+            throttle if isinstance(throttle, (int, float)) else 0
+        )
+        brake = data.get("brake")
+        self.dataRow.breakCard.setValue(
+            "--" if brake is None else "ON" if brake else "OFF"
+        )
+        drs = data.get("drs")
+        self.dataRow.drsCard.setValue(
+            "--" if drs is None else "ON" if drs else "OFF"
+        )
+
+    @staticmethod
+    def _formatValue(value) -> str:
+        if value is None:
+            return "--"
+        if isinstance(value, float):
+            return f"{value:.0f}"
+        return str(value)
 
 
 class SessionSelector(Card):

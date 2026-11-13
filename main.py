@@ -65,11 +65,16 @@ class MainWindow(QMainWindow):
         self.trackStatusVM = TrackStatusVM(
             playControlsVM=self.playControlsVM, sessionSelectorVM=self.sessionSelectorVM
         )
-        self.driverStandingsVM = DriverStandingsViewModel(
-            playControlsVM=self.playControlsVM, signals=self.blockLoaderSignals
+        self.focusDriverVM = FocusDriverVM(
+            signals=self.blockLoaderSignals,
+            playControlsVM=self.playControlsVM,
         )
-        self.focusDriverVM = FocusDriverVM(signals=self.blockLoaderSignals)
-        
+        self.driverStandingsVM = DriverStandingsViewModel(
+            playControlsVM=self.playControlsVM, signals=self.blockLoaderSignals, focusDriverVM = self.focusDriverVM
+        )
+
+        # when the sessionID changes you need to clear previously stored data
+        self.sessionSelectorVM.currentSessionIDChanged.connect(self.__refreshData)
         # set the main container
         mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
@@ -91,6 +96,7 @@ class MainWindow(QMainWindow):
             sessionSelectorViewModel=self.sessionSelectorVM,
             conectivityViewModel=self.conectivityVM,
             driverStandingsVM=self.driverStandingsVM,
+            focusDriverVM=self.focusDriverVM,
         )
         self.settings = GraphCanvasContainer(session_selector=self.sessionSelectorVM)
         # Removed the dbHandler object since the UI shouldn't be exposed to it (traditionally). If there's a reason it was here,
@@ -111,8 +117,13 @@ class MainWindow(QMainWindow):
     @brief this function changes the current index of the stack to
            change the current widget being shown
     """
+    def __refreshData(self):
+        print(f"{theme.redColor} clearing stored data {theme.resetColor}")
+        self.driverStandingsVM.clearData()
+        self.focusDriverVM.clearData()
 
     def switch_page(self, index):
+        self.playControlsVM.togglePlay(toggleValue= False)
         self.stack.setCurrentIndex(index)
 
     # NOTE: could fix this to use less lines

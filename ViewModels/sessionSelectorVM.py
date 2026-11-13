@@ -99,6 +99,7 @@ class SessionSelectorVM(QObject):
 
     def __onSessionReady(self, sessionID: int):
         self.__updateCurrentSessionID(newSessionID= sessionID)
+        # need to clear all of the previously stored data
         # start the worker
         dataLoaderWorker = BlockLoader(sessionID= self.currentSessionID, signals= self.signals)
         dataLoaderWorker.signals.currentAvailablePlaybackChanged.connect(

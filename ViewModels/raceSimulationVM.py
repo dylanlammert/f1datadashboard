@@ -67,7 +67,7 @@ class PlayControlsVM(QObject):
     # NOTE: Might not need this instead just send the new time to the front end ui
     def __updatePlaybackBuffer(self, updatedTime: float):
         self.updatedPlaybackBuffer.emit(updatedTime)
-    def togglePlay(self):
+    def togglePlay(self, toggleValue: bool | None = None):
         """_function that updates the VM state to playing or paused depending on previous state_
 
         Args:
@@ -75,15 +75,26 @@ class PlayControlsVM(QObject):
         NOTE:
             change above timeAtTogglePressed, don't think I need it
         """
-        # if simulation is playing then pause
-        if self.__isPlaying:
-            self.__isPlaying = False
-            self.updatedPlayingStatus.emit(False)
-            self.timer.stop()
-        else:
-            self.__isPlaying = True
-            self.updatedPlayingStatus.emit(True)
-            self.timer.start()
+        if toggleValue is None:
+            # if simulation is playing then pause
+            if self.__isPlaying:
+                self.__isPlaying = False
+                self.updatedPlayingStatus.emit(False)
+                self.timer.stop()
+            else:
+                self.__isPlaying = True
+                self.updatedPlayingStatus.emit(True)
+                self.timer.start()
+        else: 
+            if toggleValue == True:
+                self.__isPlaying = True
+                self.updatedPlayingStatus.emit(True)
+                self.timer.start()
+            elif toggleValue == False:
+                self.__isPlaying = False
+                self.updatedPlayingStatus.emit(False)
+                self.timer.stop()
+
 
     def getIsPlaying(self):
         return self.__isPlaying
