@@ -137,7 +137,7 @@ class FocusDriverVM(QObject):
         self.dataBlockSignals.finished_signal.connect(self.printLogger)
         self.lastUpdateTime: float = 0.00
         playControlsVM.updatedTime.connect(self.__clockTick)
-        self.clockLimiter: float = .02
+        self.clockLimiter: float = .2
 
     def clearData(self):
         self.currentData.clear()
@@ -244,13 +244,12 @@ class DriverStandingsViewModel(QObject):
         return self.__focused_driver_loaded
 
     # NOTE: I feel like we don't need the DBhandler to be passed down so I am removing it
-    def __init__(self, playControlsVM: PlayControlsVM, focusDriverVM: FocusDriverVM,signals: BlockLoaderWorkerSignals = None):
+    def __init__(self, playControlsVM: PlayControlsVM, focusDriverVM: FocusDriverVM, signals: BlockLoaderWorkerSignals):
         super().__init__()
         self.dbhandler = DBhandler()
         self.__driver_data: list = []
 
         self.focusDriverVM = focusDriverVM
-        #self.playControlsVM.updatedTime.connect(self.onClockUpdate)
         self.dataBlockSignals = signals
         self.dataBlockSignals.driverStandingsBlockChanged.connect(self.__dataBlockLoaded)
         self.dataBlockSignals.finished_signal.connect(self.printLogger)

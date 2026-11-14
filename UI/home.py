@@ -57,17 +57,6 @@ class Card(QFrame):
         """
         )
 
-
-class DriverCard(QFrame):
-    """
-    _UI element for the driver data being held within the driver placments area of the homepage_
-
-    """
-
-    def __init__(self, driverName, currentPlacement):
-        super().__init__()
-
-
 class TrackStatusCard(Card):
     """_creates a card that shows updated data from the trackStatusVM_"""
 
@@ -78,6 +67,7 @@ class TrackStatusCard(Card):
             "Yellow": theme.warning,
             "Red": theme.danger,
             "VSCDeployed": theme.safety,
+            "SCDeployed": theme.safety,
             "Idle": theme.info,
         }
         # self.setStyleSheet(f"""background-color: {theme.background}""")
@@ -758,8 +748,9 @@ class DriverRow(QHBoxLayout):
         self.addLayout(self.fastestLap[0])
         self.addLayout(self.currentLapTime[0])
         self.addStretch()
+
     # builder for the lap data in driver telem top right side
-    def __lapBlock(self, title:str, color: str = theme.secondaryText) -> {QVBoxLayout, QLabel}:
+    def __lapBlock(self, title:str, color: str = theme.secondaryText) -> tuple[QVBoxLayout, QLabel]:
         layout = QVBoxLayout()
         layout.setSpacing(labelPadding)
         layout.addWidget(
@@ -817,7 +808,7 @@ class DriverTelemetry(Card):
         layout.addLayout(self.dataRow)
 
     # builder for the lap data in driver telem top right side
-    def __lapBlock(self, title:str, color: str = theme.secondaryText) -> {QVBoxLayout, QLabel}:
+    def __lapBlock(self, title:str, color: str = theme.secondaryText) -> tuple[QVBoxLayout, QLabel]:
         layout = QVBoxLayout()
         layout.setSpacing(labelPadding)
         layout.addWidget(
