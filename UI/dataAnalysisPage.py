@@ -20,6 +20,7 @@ from Services.dbhandler import DBhandler
 from ViewModels.sessionSelectorVM import SessionSelectorVM
 from UI.Theme import theme
 from UI.aiStrategyPanel import AIStrategyPanel
+from UI.aiWhatIfPanel import AIWhatIfPanel
 
 
 class SearchableGraphDropdown(QComboBox):
@@ -305,6 +306,9 @@ class GraphCanvasContainer(QWidget):
             "AI Pit Stop Strategy": lambda: AIStrategyPanel(
                 self.current_session_id
             ),
+            "AI Race Strategy What-If Simulator": lambda: AIWhatIfPanel(
+                self.current_session_id
+            ),
         }
 
         # ? This handles populating generic graphs into the graphs list.
@@ -384,6 +388,18 @@ class GraphCanvasContainer(QWidget):
             )
             if strategy is not None:
                 strategy.set_session(session_id)
+
+        what_if_proxy = self.active_graphs.get(
+            "AI Race Strategy What-If Simulator"
+        )
+        if what_if_proxy is not None:
+            container = what_if_proxy.widget()
+            simulator = (
+                container.findChild(AIWhatIfPanel)
+                if container is not None else None
+            )
+            if simulator is not None:
+                simulator.set_session(session_id)
 
     # TODO: For some reason, on startup, the label ends up in the middle left of the view? I'm not really sure what the deal is. 
     # TODO:     I'm ignoring it, but it might be something to look at later.
