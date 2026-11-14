@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt, Signal, QPointF, QSize
 from PySide6.QtGui import QPainter, QMouseEvent, QResizeEvent
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from graphs.placement_over_time import placement_figure_for_session
+from graphs.predicted_vs_actual_pitstops import build_pit_stop_comparison_figure
 from graphs.graph_factory import Metric, GenericGraphFactory
 from Services.dbhandler import DBhandler
 from ViewModels.sessionSelectorVM import SessionSelectorVM
@@ -312,6 +313,12 @@ class GraphCanvasContainer(QWidget):
         }
 
         # ? This handles populating generic graphs into the graphs list.
+        self.graph_factories["Predicted vs Actual Pit Stops"] = (
+            lambda: FigureCanvasQTAgg(
+                build_pit_stop_comparison_figure(self.current_session_id)[0]
+            )
+        )
+
         self.generic = GenericGraphFactory(self.dbhandler)
         for metric in Metric:
             self.graph_factories[f"Generic: {metric.spec.label}"] = lambda m=metric: (
