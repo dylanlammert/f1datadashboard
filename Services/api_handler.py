@@ -5,7 +5,9 @@ from Services.dbhandler import DBhandler
 import pandas as pd
 from fastf1.events import EventSchedule
 from PySide6.QtCore import QObject, Signal, QRunnable
-
+import sys
+import subprocess
+import datetime
 """
     TODO: 
         - If f1cache contains > 5 items delete last used item
@@ -84,6 +86,34 @@ def _get_event_names(schedule: EventSchedule) -> pd.Series | None:
         _type_: _description_
     """
     return schedule.get("EventName")
+
+# NOTE: clean up function
+def isTokenValid() -> bool | None:
+    """True = valid token, False = needs login, None = couldn't tell."""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "fastf1", "auth", "f1tv", "--status"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+
+    # find the "token status: ..." line
+    tokenLine = None
+    for line in result.stdout.lower().splitlines():
+        if line.startswith("token status:"):
+            tokenLine = line.removeprefix("token status:").strip()
+            break
+
+    if tokenLine is None:
+        return None  # unexpected output, don't guess
+
+    if tokenLine.startswith("expires"):
+        # belt and braces: also make sure the date isn't already in the past
+        return True
+    return False
 
 
 def _main():

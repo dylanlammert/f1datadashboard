@@ -1,11 +1,16 @@
 # basic test application
 from PySide6.QtCore import Qt
-from UI.Theme import theme
+from UI.Theme import theme, fontStyles
 from ViewModels.raceSimulationVM import PlayControlsVM
 from ViewModels.trackStatusVM import TrackStatusVM
 from ViewModels.simulationGraphVM import SimulationCanvas
 from ViewModels.sessionSelectorVM import SessionSelectorVM
 from ViewModels.connectivityVM import ConnectivityVM
+from ViewModels.driverStandingsVM import (
+    BlockLoaderWorkerSignals,
+    DriverStandingsViewModel,
+    FocusDriverVM,
+)
 from PySide6.QtWidgets import (
     QGridLayout,
     QLabel,
@@ -17,12 +22,16 @@ from PySide6.QtWidgets import (
     QComboBox,
     QPushButton,
     QStyleFactory,
+    QProgressBar,
+    QScrollArea,
+    QSizePolicy,
 )
 
 layoutColor: str = theme.info
 gridMargin: int = 12
 padding: int = 12
 borderRadius: int = 20
+labelPadding: int = 2
 
 """
     TODO: 
@@ -102,6 +111,11 @@ class TrackStatusCard(Card):
 
 
 class ComboBoxStyling(QComboBox):
+    """_styling for the combo boxes_
+
+    Args:
+        QComboBox (Pyside6 Object): _init. to the super class_
+    """
     def __init__(self):
         super().__init__()
         self.setStyle(QStyleFactory.create("Fusion"))
@@ -121,7 +135,7 @@ class ComboBoxStyling(QComboBox):
             """
         )
 
-
+# NOTE: fix issue with buffer UI
 class PlayControlsUI(Card):
     """_Front-end for the PlayControls VM. this controls the user input for toggling play, scrubbing, and playback speed_
 
@@ -137,14 +151,18 @@ class PlayControlsUI(Card):
 
     def __init__(self, playControlsController: PlayControlsVM):
         super().__init__()
-        self.setFixedHeight(60)
+        self.setFixedHeight(68)
+        # VMs
         self.playControlsVM = playControlsController
         self.raceDuration: float = 0.00
+        self.availablePlaybackTime: float = 0.00
         self.formattedTime: str = "00:00:00"
         self.SPEEDS: tuple = (1, 2, 4)
         # connect on duration change to the playControlsVM
         self.playControlsVM.updatedRaceDuration.connect(self.onDurationChange)
         self.playControlsVM.updatedTime.connect(self.onCurrentTimeChange)
+        # show buffer available
+        self.playControlsVM.updatedPlaybackBuffer.connect(self.onBufferUpdated)
         layout = QVBoxLayout(self)
         # scrub bar
         scrubRow = QHBoxLayout()
@@ -152,15 +170,59 @@ class PlayControlsUI(Card):
         # ? I had to change this to Qt.Orientation.Horizontal to get it to compile for some reason. Apparently it's a newer change with PySide6?
         # create the slider NOTE: might want to make this it's own class later on
         self.scrubSlider = QSlider(Qt.Orientation.Horizontal)
-        self.scrubSlider.setMinimumHeight(40)
+        self.scrubSlider.setMinimumHeight(28)
+        self.scrubSlider.setTracking(True)
         self.scrubSlider.setRange(0, 100)  # will be rescaled once duration is known
         self.durationLabel = QLabel(self.formattedTime)
+        self.bufferProgress = QProgressBar()
+        self.bufferProgress.setRange(0, 1000)
+        self.bufferProgress.setTextVisible(False)
+        self.bufferProgress.setFixedHeight(4)
+        self.bufferProgress.setStyleSheet(
+            f"""
+            QProgressBar {{
+                background-color: {theme.tertiaryText};
+                border: none;
+                border-radius: 2px;
+            }}
+            QProgressBar::chunk {{
+                background-color: {theme.info};
+                border-radius: 2px;
+            }}
+            """
+        )
+        self.scrubSlider.setStyleSheet(
+            f"""
+            QSlider::groove:horizontal {{
+                background: {theme.tertiaryText};
+                border: none;
+                height: 4px;
+                border-radius: 2px;
+            }}
+            QSlider::handle:horizontal {{
+                background-color: {theme.primaryText};
+                border: 1px solid {theme.background};
+                width: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
+            }}
+            """
+        )
+        sliderLayout = QVBoxLayout()
+        sliderLayout.setContentsMargins(6, 0, 6, 0)
+        sliderLayout.setSpacing(0)
+        sliderLayout.addWidget(self.scrubSlider)
+        sliderLayout.addWidget(self.bufferProgress)
+        sliderContainer = QWidget()
+        sliderContainer.setLayout(sliderLayout)
         # set the signal changes
         self.scrubSlider.valueChanged.connect(self._onSliderValueChanged)
         self.scrubSlider.sliderPressed.connect(self._onSliderPressed)
         self.scrubSlider.sliderReleased.connect(self._onSliderReleased)
         # is slider being messed with
         self.sliderInUse: bool = False
+        self.wasPlayingBeforeScrub: bool = False
+        
 
         # play functions
 
@@ -180,7 +242,7 @@ class PlayControlsUI(Card):
         "background-color: #e10600; color: white; font-weight: bold; }"
         "QPushButton:hover { background-color: #ff1e17; }"
         """
-
+        self.playControlsVM.updatedPlayingStatus.connect(self.updatePlayButtonValue)
         self.playButton.clicked.connect(self._onClickPlay)
 
         # change playback speed
@@ -210,7 +272,7 @@ class PlayControlsUI(Card):
         scrubRow.addWidget(self.playButton, alignment=Qt.AlignmentFlag.AlignVCenter)
         scrubRow.addWidget(self.speedBox)
         scrubRow.addWidget(self.currentTimeLabel)
-        scrubRow.addWidget(self.scrubSlider, 1)
+        scrubRow.addWidget(sliderContainer, 1)
         scrubRow.addWidget(self.durationLabel)
         layout.addLayout(scrubRow)
 
@@ -220,27 +282,32 @@ class PlayControlsUI(Card):
         """_send a signal to the playcontrolVM to stop the clock_"""
         print("user clicked play/pause")
         self.playControlsVM.togglePlay()
-        if self.playControlsVM.getIsPlaying():
+
+    def updatePlayButtonValue(self, toggleValue):
+        if toggleValue == True:
             self.playButton.setText("⏸")
         else:
             self.playButton.setText("▶")
 
     def _onSliderPressed(self):
-        """_stop the playControls timer from updating the timer while the user is messing with the slider_"""
-        # stop the slider from updating from currentTime changing
-        self.playControlsVM.timer.blockSignals(True)
+        """Pause playback while scrubbing so timer ticks cannot overwrite the seek."""
         self.sliderInUse = True
+        self.wasPlayingBeforeScrub = self.playControlsVM.getIsPlaying()
+        if self.wasPlayingBeforeScrub:
+            self.playControlsVM.togglePlay()
+            self.playButton.setText("▶")
 
     def _onSliderReleased(self):
-        """_unblock the playcontrols timer from updating_"""
-        # allow the slider to update from currentTime changing
-        self.playControlsVM.timer.blockSignals(False)
+        """Resume playback after scrubbing if it was playing before the drag."""
         self.sliderInUse = False
+        if self.wasPlayingBeforeScrub:
+            self.playControlsVM.togglePlay()
+            self.playButton.setText("⏸")
+        self.wasPlayingBeforeScrub = False
 
-    def _onSliderValueChanged(self):
-        """_set the playcontrolVM's timer to what the new value is_"""
-        # take time that slider displays then set the currentTime in the playControls VM
-        self.playControlsVM.setCurrentTime(self.scrubSlider.value())
+    def _onSliderValueChanged(self, value: int):
+        """Send each slider change to the playback VM so its consumers update."""
+        self.playControlsVM.setCurrentTime(float(value))
 
     def _onPlaybackSpeedChanged(self, index=1):
         """_update the playControlsVM's variable for the playback speed to the new value up to 4x_"""
@@ -273,6 +340,10 @@ class PlayControlsUI(Card):
         """
         time = self._formatTime(newCurrentTime)
         self.currentTimeLabel.setText(time)
+        if not self.sliderInUse:
+            wasBlocked = self.scrubSlider.blockSignals(True)
+            self.scrubSlider.setValue(round(newCurrentTime))
+            self.scrubSlider.blockSignals(wasBlocked)
 
     def onDurationChange(self, newDuration):
         # self.scrubSlider.blockSignals(True)
@@ -280,7 +351,17 @@ class PlayControlsUI(Card):
         self.formattedTime = self._formatTime(newDuration)
         self.scrubSlider.setRange(0, int(self.raceDuration))
         self.durationLabel.setText(self.formattedTime)
+        self.onBufferUpdated(self.availablePlaybackTime)
         # self.scrubSlider.blockSignals(False)
+    def onBufferUpdated(self, newTime: float):
+        self.availablePlaybackTime = max(0.0, min(newTime, self.raceDuration))
+        if self.raceDuration > 0:
+            progress = round(self.availablePlaybackTime / self.raceDuration * 1000)
+            self.bufferProgress.setValue(progress)
+        else:
+            self.bufferProgress.setValue(0)
+        return
+        
 
 
 class HomePage(QWidget):
@@ -292,12 +373,16 @@ class HomePage(QWidget):
         playControlsViewModel: PlayControlsVM,
         sessionSelectorViewModel: SessionSelectorVM,
         conectivityViewModel: ConnectivityVM,
+        driverStandingsVM: DriverStandingsViewModel,
+        focusDriverVM: FocusDriverVM,
     ):
         super().__init__()
         # share the mem location of VMs
         self.trackStatusController = trackStatusViewModel
         self.playControlsController = playControlsViewModel
         self.sessionSelectorController = sessionSelectorViewModel
+        self.driverStandingsVM = driverStandingsVM
+        self.focusDriverVM = focusDriverVM
 
         # make a grid layout of 13x11ish
         # grid layout (rowstart, colstart, spanrows, spancols)
@@ -306,29 +391,40 @@ class HomePage(QWidget):
         gridLayout.setSpacing(gridMargin)
         # setting the margins of the grid to a standard size
         gridLayout.setContentsMargins(gridMargin, gridMargin, gridMargin, gridMargin)
+        # Reserve flexible vertical space for the simulation instead of its controls.
+        for row in (1, 2, 3):
+            gridLayout.setRowStretch(row, 1)
+        for column in (0, 1, 2):
+            gridLayout.setColumnStretch(column, 1)
         # create the simulation frame
         driverSimFrame = DriverSIM(
             trackStatus=self.trackStatusController,
             playControlsController=self.playControlsController,
             sessionSelectorVM=self.sessionSelectorController,
         )
-        gridLayout.addWidget(driverSimFrame, 1, 0, 3, 3)
+        gridLayout.addWidget(driverSimFrame, 1, 0, 3, 2)
         # create the session selector
         sessionFrame = SessionSelector(sessionSelectorViewModel, conectivityViewModel)
-        gridLayout.addWidget(sessionFrame, 0, 0, 1, 3)
+        gridLayout.addWidget(sessionFrame, 0, 0, 1, 2)
         # create the driver placement UI
-        driverStandingsFrame = DriverStandings()
-        gridLayout.addWidget(driverStandingsFrame, 0, 3, 4, 1)
+        driverStandingsFrame = DriverStandings(driverStandingsVM = self.driverStandingsVM)
+        gridLayout.addWidget(driverStandingsFrame, 0, 2, 4, 2)
         # create the focussed driver telemetry card
-        driverTelemetryCard1 = DriverTelemetry()
-        gridLayout.addWidget(driverTelemetryCard1, 4, 0, 1, 4)
-        # create the 2nd focussed driver telemetry card
-        driverTelemetryCard2 = DriverTelemetry()
-        gridLayout.addWidget(driverTelemetryCard2, 5, 0, 1, 4)
+        self.driverTelemetryCards = [DriverTelemetry(), DriverTelemetry()]
+        for row, telemetryCard in enumerate(self.driverTelemetryCards, start=4):
+            gridLayout.addWidget(telemetryCard, row, 0, 1, 4)
+        self.focusDriverVM.currentDataChanged.connect(
+            self.updateFocusedDriverTelemetry
+        )
         # NOTE: this should not control this, make playControls fetch this on init call the playControlsVM to fetch the race duration
         self.playControlsController.fetchRaceDuration(
             self.sessionSelectorController.currentSessionID
         )
+
+    def updateFocusedDriverTelemetry(self, currentData: list[dict]) -> None:
+        for index, telemetryCard in enumerate(self.driverTelemetryCards):
+            data = currentData[index] if index < len(currentData) else None
+            telemetryCard.updateTelemetry(data)
 
 
 class DriverSIM(Card):
@@ -344,6 +440,10 @@ class DriverSIM(Card):
     ):
         super().__init__()
         self.raceSimCanvas = SimulationCanvas(sessionSelectorVM=sessionSelectorVM)
+        self.raceSimCanvas.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        self.raceSimCanvas.setMinimumSize(0, 0)
         self.setStyleSheet(f"""
             DriverSIM {{
                background-color: {theme.background}; 
@@ -357,11 +457,100 @@ class DriverSIM(Card):
         # create the playcontrols that will sit at the bottom row of the race sim
         self.playControlsUI = PlayControlsUI(playControlsController)
         # this will hold the simulated race
-        layout.addWidget(self.raceSimCanvas)
+        layout.addWidget(self.raceSimCanvas, 1)
         self.trackStatusCard = TrackStatusCard(trackStatus)
         self.trackStatusCard.setParent(self)
         self.trackStatusCard.raise_()
         layout.addWidget(self.playControlsUI)
+
+class DriverCard(QPushButton):
+    """_card to hold driver data within the driver standings ui component_
+
+    Args:
+        Card (_type_): _description_
+
+    NOTE: 
+    * This needs to be a button to update the focused driver VM aswell 
+    * If a single driver card is clicked it needs to ask the VM to change focusDrivers if it does then it needs to change the color of the card
+    * 
+    """
+    def __init__(
+        self,
+        driverCode: str,
+        driverTeam: str,
+        timeBehind: float | str | None,
+        position: int = 1,
+    ):
+        super().__init__()
+        self.setMinimumHeight(40)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setAccessibleName(f"Focus {driverCode}")
+        self.setToolTip(f"Focus on {driverCode}")
+        self.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {theme.background};
+                border: none;
+                border-radius: {borderRadius}px;
+                text-align: left;
+            }}
+            QPushButton:hover {{
+                background-color: {theme.info};
+            }}
+            QPushButton[focused="true"] {{
+                background-color: {theme.info};
+            }}
+            QPushButton:focus {{
+                border: 1px solid {theme.info};
+            }}
+            """
+        )
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(padding, 6, padding, 6)
+        layout.setSpacing(padding)
+
+        positionLabel = QLabel(f"P{position}")
+        positionLabel.setFixedWidth(30)
+        positionLabel.setStyleSheet(
+            f"background: transparent; color: {theme.primaryText}; font-weight: bold;"
+        )
+
+        driverLabel = QLabel(driverCode)
+        driverLabel.setStyleSheet(
+            f"background: transparent; color: {theme.primaryText}; font-weight: bold;"
+        )
+
+        teamLabel = QLabel(driverTeam or "Unknown team")
+        teamLabel.setStyleSheet(
+            f"background: transparent; color: {theme.secondaryText};"
+        )
+
+        gapLabel = QLabel(self._formatGap(timeBehind, position))
+        gapLabel.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        gapLabel.setStyleSheet(
+            f"background: transparent; color: {theme.primaryText}; font-weight: bold;"
+        )
+
+        layout.addWidget(positionLabel)
+        layout.addWidget(driverLabel)
+        layout.addWidget(teamLabel, 1)
+        layout.addWidget(gapLabel)
+
+    def setFocused(self, focused: bool) -> None:
+        self.setProperty("focused", focused)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
+
+    @staticmethod
+    def _formatGap(timeBehind: float | str | None, position: int) -> str:
+        if position == 1:
+            return "LEADER"
+        if timeBehind is None:
+            return "--"
+        if isinstance(timeBehind, (int, float)):
+            return f"+{timeBehind:.3f}s"
+        return str(timeBehind)
 
 
 class DriverStandings(Card):
@@ -369,24 +558,318 @@ class DriverStandings(Card):
     _this holds all of the Driver Cards for a specified race_
     """
 
+    def __init__(self, driverStandingsVM: DriverStandingsViewModel):
+        super().__init__()
+        self.driverStandingsVM = driverStandingsVM
+        layout = QVBoxLayout(self)
+        title = QLabel("Driver Standings")
+        title.setStyleSheet(
+            f"background: transparent; color: {theme.primaryText}; font-weight: bold;"
+        )
+        layout.addWidget(title)
+
+        self.standingsList = QVBoxLayout()
+        self.standingsList.setContentsMargins(0, 0, 0, 0)
+        self.standingsList.setSpacing(6)
+        self.standingsContainer = QWidget()
+        self.standingsContainer.setStyleSheet("background: transparent;")
+        self.standingsContainer.setLayout(self.standingsList)
+
+        scrollArea = QScrollArea()
+        scrollArea.setWidgetResizable(True)
+        scrollArea.setFrameShape(QFrame.Shape.NoFrame)
+        scrollArea.setStyleSheet("background: transparent;")
+        scrollArea.setWidget(self.standingsContainer)
+        layout.addWidget(scrollArea)
+
+        self._showEmptyState()
+        self.driverStandingsVM.standings_changed.connect(self.standingsBuilder)
+
+    def standingsBuilder(self, standingsList: list):
+        self._clearStandings()
+        if not standingsList:
+            self._showEmptyState()
+            return
+
+        currentFocusDrivers = self.driverStandingsVM.getFocusDrivers()
+        for position, driver in enumerate(standingsList, start=1):
+            driverCode = driver.get("driverCode", driver.get("driver_code")) or "???"
+            team = driver.get("team") or "Unknown team"
+            timeBehind = driver.get("timeBehind", driver.get("time_behind"))
+            driverCard = DriverCard(
+                driverCode=str(driverCode),
+                driverTeam=str(team),
+                timeBehind=timeBehind,
+                position=driver.get("position", position),
+            )
+            if driverCode in currentFocusDrivers:
+                driverCard.setFocused(True)
+
+            driverCard.clicked.connect(
+                lambda _checked=False, code=str(driverCode), card=driverCard:
+                    card.setFocused(
+                        self.driverStandingsVM.onDriverToggled(code)
+                    )
+            )
+            self.standingsList.addWidget(driverCard)
+        self.standingsList.addStretch()
+
+    def _clearStandings(self) -> None:
+        while self.standingsList.count():
+            item = self.standingsList.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _showEmptyState(self) -> None:
+        emptyLabel = QLabel("No driver standings available.")
+        emptyLabel.setWordWrap(True)
+        emptyLabel.setStyleSheet(
+            f"background: transparent; color: {theme.secondaryText};"
+        )
+        self.standingsList.addWidget(emptyLabel)
+        self.standingsList.addStretch()
+
+# UI helper 
+def _telemetryLabel(text: str, size: int = 11, color: str | None = None, bold: bool = False) -> QLabel:
+    """_small helper so every label in the telemetry card shares the same font and a transparent background_"""
+    label = QLabel(text)
+    label.setStyleSheet(
+        f"""
+        background: transparent;
+        color: {color or theme.secondaryText};
+        font-size: {size}px;
+        font-weight: {"bold" if bold else "normal"};
+        """
+    )
+    return label
+
+# UI helper classes for driver telemetry
+class StatCard(QWidget):
+    """_a small caption above a big value, with an optional unit ([SPEED] KM/H)_"""
+ 
+    def __init__(
+        self,
+        title: str,
+        value: str = "--",
+        unit: str = "",
+        valueColor: str | None = None,
+        valueSize: int = 28,
+    ):
+        super().__init__()
+        self.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        layout.addWidget(_telemetryLabel(title.upper(), 10))
+ 
+        valueRow = QHBoxLayout()
+        valueRow.setSpacing(4)
+        self.valueLabel = _telemetryLabel(
+            value, valueSize, valueColor or theme.primaryText, bold=True
+        )
+        valueRow.addWidget(self.valueLabel, alignment=Qt.AlignmentFlag.AlignBottom)
+        if unit:
+            valueRow.addWidget(
+                _telemetryLabel(unit, 11), alignment=Qt.AlignmentFlag.AlignBottom
+            )
+        valueRow.addStretch()
+        layout.addLayout(valueRow)
+ 
+    def setValue(self, value: str) -> None:
+        self.valueLabel.setText(value)
+
+class MeterBar(QWidget):
+    """_labelled progress bar with a percent readout (THROTTLE PRESSURE 75%)_"""
+ 
+    def __init__(self, title: str, color: str):
+        super().__init__()
+        self.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+ 
+        header = QHBoxLayout()
+        header.addWidget(_telemetryLabel(title.upper(), 10, color, bold=True))
+        header.addStretch()
+        self.percentLabel = _telemetryLabel("0%", 10, color, bold=True)
+        header.addWidget(self.percentLabel)
+        layout.addLayout(header)
+ 
+        self.bar = QProgressBar()
+        self.bar.setRange(0, 100)
+        self.bar.setTextVisible(False)
+        self.bar.setFixedHeight(8)
+        self.bar.setStyleSheet(
+            f"""
+            QProgressBar {{
+                background-color: {theme.tertiaryText};
+                border: none;
+                border-radius: 4px;
+            }}
+            QProgressBar::chunk {{
+                background-color: {color};
+                border-radius: 4px;
+            }}
+            """
+        )
+        layout.addWidget(self.bar)
+ 
+    def setPercent(self, percent: float) -> None:
+        percent = max(0, min(100, int(round(percent))))
+        self.bar.setValue(percent)
+        self.percentLabel.setText(f"{percent}%")
+
+class DriverRow(QHBoxLayout):
     def __init__(self):
         super().__init__()
-        # create and add a label for layout purposes
-        layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Driver Standings"))
 
+        self.setSpacing(padding)
+        
+        self.driverBadge = QLabel("No Driver")
+        self.driverBadge.setStyleSheet(
+            f"""
+            background-color: {theme.success};
+            color: #0B0E14;
+            font-size: 12px;
+            font-weight: bold;
+            padding: 4px 12px;
+            border-radius: 6px;
+            """
+        )
+
+        self.competitorLabel = QLabel("Closest Competitor| --")
+        self.competitorLabel.setStyleSheet(
+            f"""
+            background-color: transparent;
+            color: {theme.secondaryText};
+            font-size: 12px;
+            padding: 4px 12px;
+            border: 1px solid {theme.info};
+            border-radius: 6px;
+            """ 
+        )
+
+        self.addWidget(self.driverBadge)
+        self.addWidget(self.competitorLabel)
+        self.fastestLap = self.__lapBlock("Fastest Lap")
+        self.currentLapTime = self.__lapBlock("Current Lap")
+        # NOTE is this the best way to build this out?
+        self.addLayout(self.fastestLap[0])
+        self.addLayout(self.currentLapTime[0])
+        self.addStretch()
+    # builder for the lap data in driver telem top right side
+    def __lapBlock(self, title:str, color: str = theme.secondaryText) -> {QVBoxLayout, QLabel}:
+        layout = QVBoxLayout()
+        layout.setSpacing(labelPadding)
+        layout.addWidget(
+            _telemetryLabel(title, 10), alignment=Qt.AlignmentFlag.AlignRight
+        )
+        lapValue = _telemetryLabel("__:__", fontStyles.text, color, bold= True)
+        layout.addWidget(lapValue, alignment= Qt.AlignmentFlag.AlignRight)
+        return layout, lapValue
+
+    def updateTelemetry() -> None:
+        print("stub")
+
+class DataRow(QHBoxLayout):
+    def __init__(self):
+        super().__init__()
+
+        self.setSpacing(padding)
+        self.speedCard = StatCard("Speed", "__", "KM/H")
+        self.gearCard = StatCard("Gear", "__", valueColor= theme.success)
+        self.rpmCard = StatCard("RPM", "__", valueSize= 20)
+        self.throttleMeter = MeterBar("Throttle Pressure", theme.success)
+        self.breakCard = StatCard("Brakes", "--", valueColor= theme.danger)
+        self.drsCard = StatCard("DRS", "--", valueColor= theme.warning)
+        self.addWidget(self.speedCard)
+        self.addWidget(self.gearCard)
+        self.addWidget(self.rpmCard)
+        self.addWidget(self.throttleMeter)
+        self.addWidget(self.breakCard)
+        self.addWidget(self.drsCard)
 
 class DriverTelemetry(Card):
     """
     _showcase the focussed driver's live telemetry_
+
+    - will need to run a diff sql exec script to grab more data from telem
+                    - position from lap can also build from telem person in front of
+                    - rpm val
+                    - speed
+                    - brake bool
+                    - drs val
+                    - throttle val for meter
+                    - x, y pos
+                    - gear
     """
 
     def __init__(self):
         super().__init__()
         self.setMaximumHeight(100)
-        # create and add a label for layout purposes
-        layout = QHBoxLayout(self)
-        layout.addWidget(QLabel("Driver Telemetry"))
+        layout = QVBoxLayout(self)
+
+        self.driverRow = DriverRow()
+        layout.addLayout(self.driverRow)
+
+        self.dataRow = DataRow()
+        layout.addLayout(self.dataRow)
+
+    # builder for the lap data in driver telem top right side
+    def __lapBlock(self, title:str, color: str = theme.secondaryText) -> {QVBoxLayout, QLabel}:
+        layout = QVBoxLayout()
+        layout.setSpacing(labelPadding)
+        layout.addWidget(
+            _telemetryLabel(title, 10), alignment=Qt.AlignmentFlag.AlignRight
+        )
+        lapValue = _telemetryLabel("__:__", fontStyles.text, color, bold= True)
+        layout.addWidget(lapValue, alignment= Qt.AlignmentFlag.AlignRight)
+        return layout, lapValue
+
+    def updateTelemetry(self, data: dict | None) -> None:
+        if not data:
+            self.driverRow.driverBadge.setText("No Driver")
+            self.driverRow.competitorLabel.setText("Closest Competitor | --")
+            self.dataRow.speedCard.setValue("--")
+            self.dataRow.gearCard.setValue("--")
+            self.dataRow.rpmCard.setValue("--")
+            self.dataRow.throttleMeter.setPercent(0)
+            self.dataRow.breakCard.setValue("--")
+            self.dataRow.drsCard.setValue("--")
+            return
+
+        driverCode = data.get("driver_code") or "Unknown Driver"
+        self.driverRow.driverBadge.setText(str(driverCode))
+        distance = data.get("distance_to_driver_ahead")
+        self.driverRow.competitorLabel.setText(
+            "Closest Competitor | "
+            + (f"{distance:.1f}" if isinstance(distance, (int, float)) else "--")
+        )
+        self.dataRow.speedCard.setValue(self._formatValue(data.get("speed")))
+        self.dataRow.gearCard.setValue(self._formatValue(data.get("gear")))
+        self.dataRow.rpmCard.setValue(self._formatValue(data.get("rpm")))
+
+        throttle = data.get("throttle")
+        self.dataRow.throttleMeter.setPercent(
+            throttle if isinstance(throttle, (int, float)) else 0
+        )
+        brake = data.get("brake")
+        self.dataRow.breakCard.setValue(
+            "--" if brake is None else "ON" if brake else "OFF"
+        )
+        drs = data.get("drs")
+        self.dataRow.drsCard.setValue(
+            "--" if drs is None else "ON" if drs else "OFF"
+        )
+
+    @staticmethod
+    def _formatValue(value) -> str:
+        if value is None:
+            return "--"
+        if isinstance(value, float):
+            return f"{value:.0f}"
+        return str(value)
 
 
 class SessionSelector(Card):

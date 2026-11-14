@@ -164,7 +164,7 @@ class TrackStatusVM(QObject):
             self.setSafetyStatus("Idle")
             self.lastStatusChangeTime = 0.00
             self.currentIndex = (
-                self.dbHandler.getFirstIndexOfTrackStatus()
+                self.dbHandler.getFirstIndexOfTrackStatus(session_id= self.sessionSelectorVM.currentSessionID)
             )  # start of session
             self.nextStatusChangeTime = self._getNextChangeTime(self.currentIndex)
         else:

@@ -3,95 +3,6 @@ from Services.dbhandler import DBhandler
 from ViewModels.sessionSelectorVM import SessionSelectorVM
 
 
-class DriverStandingsVM(QObject):
-    """_summary_
-
-    Args:
-        QObject (_type_): _description_
-
-    Note:
-        - This is where we might be able to save a few Signal calls by
-          estimating the timing behind the next person.
-        - if (there is a <[sometime] seconds difference in placements) send refresh
-          else: wait
-        - if (new lap): refresh
-        - if (new section): refresh
-
-    """
-
-    # signals that need to be sent to the front end code
-
-    # signal for the current driver(obj)
-    __updatedFocusDriver = Signal(object)
-    # signal for the list of dicts of available drivers "list[drivers]""
-    __updatedAvailableDrivers = Signal(list)
-    # list of dictionaries ([driver: "", team: "", laptime: "", sectionTime: "", placement: "", timeBehind: "" ])
-    __updatedStandings = Signal(
-        list
-    )  # could potentially use this to double for list of active drivers
-
-    @property
-    def updatedFocusDriver(self):
-        return self.__updatedFocusDriver
-
-    @property
-    def updatedAvailableDrivers(self):
-        return self.__updatedAvailableDrivers
-
-    @property
-    def updatedStandings(self):
-        return self.__updatedStandings
-
-    def __init__(self):
-        super().__init__()
-        self.currentFocusDriver
-
-    # Focus Driver Section
-
-    # set the focussed Driver
-    # when user selects a user from the driver standings, show specific telemetry for that driver
-    def toggleFocusDriver(self, newDriver: object):
-        if newDriver == self.currentFocusDriver:
-            self.updatedFocusDriver.emit(None)
-            self.currentFocusDriver = None
-        else:
-            self.updatedFocusDriver.emit(newDriver)
-            self.currentFocusDriver = newDriver
-
-    # return who the focused driver is
-    def getFocusDriver(self):
-        return self.currentFocusDriver
-
-    # grab driver telemetry from db
-    def fetchDriverTelemetry(self, focusDriver: object):
-        focussedData = {
-            "currentLap": 0,
-            "currentGear": 0,
-            "tireLife": 0,
-            "currentSpeed": 0,
-            "currentRPM": 0,
-            "currentFuel": 0.0,
-        }
-        # current lap, current gear, current tire life, current speed, current RPM, current fuel
-        # focussedData = db.getDriverData(focusDriver)
-        return focussedData
-
-    def refreshData(self):
-        """
-        grab data from db and update Signals for front end to read
-
-        """
-        # fetchDriverTelemetry(focusDriver)
-        # fetchDriverStandings()
-        # stub
-        return 0
-
-    # methods that will attempt to ask db handler for info from db
-    def fetchDriverStandings(self):
-        # updated list of Dictionaries
-        return 0
-
-
 class PlayControlsVM(QObject):
     """_view model for the play controls ui_
 
@@ -120,6 +31,7 @@ class PlayControlsVM(QObject):
 
     updatedTime = Signal(float)
     updatedRaceDuration = Signal(float)
+    updatedPlaybackBuffer = Signal(float)
     # this should probably be a property of play controls it will need to listen to changes
     updatedPlayingStatus = Signal(bool)
 
@@ -143,13 +55,19 @@ class PlayControlsVM(QObject):
         # NOTE: on application start we will want to change this VM to a paused start to begin
         # self.timer.start()
         self.sessionSelectorVM.currentSessionIDChanged.connect(self.fetchRaceDuration)
+        self.sessionSelectorVM.currentAvailablePlaybackChanged.connect(
+            self.__updatePlaybackBuffer
+        )
 
     def __tick(self):
         """_helper function that calls setCurrentTime everytime the timer is incremented_"""
         # print(f"timer = {self.currentTime + 1}")
         self.setCurrentTime(self.currentTime + self.playBackSpeed)
 
-    def togglePlay(self):
+    # NOTE: Might not need this instead just send the new time to the front end ui
+    def __updatePlaybackBuffer(self, updatedTime: float):
+        self.updatedPlaybackBuffer.emit(updatedTime)
+    def togglePlay(self, toggleValue: bool | None = None):
         """_function that updates the VM state to playing or paused depending on previous state_
 
         Args:
@@ -157,15 +75,26 @@ class PlayControlsVM(QObject):
         NOTE:
             change above timeAtTogglePressed, don't think I need it
         """
-        # if simulation is playing then pause
-        if self.__isPlaying:
-            self.__isPlaying = False
-            self.updatedPlayingStatus.emit(False)
-            self.timer.stop()
-        else:
-            self.__isPlaying = True
-            self.updatedPlayingStatus.emit(True)
-            self.timer.start()
+        if toggleValue is None:
+            # if simulation is playing then pause
+            if self.__isPlaying:
+                self.__isPlaying = False
+                self.updatedPlayingStatus.emit(False)
+                self.timer.stop()
+            else:
+                self.__isPlaying = True
+                self.updatedPlayingStatus.emit(True)
+                self.timer.start()
+        else: 
+            if toggleValue == True:
+                self.__isPlaying = True
+                self.updatedPlayingStatus.emit(True)
+                self.timer.start()
+            elif toggleValue == False:
+                self.__isPlaying = False
+                self.updatedPlayingStatus.emit(False)
+                self.timer.stop()
+
 
     def getIsPlaying(self):
         return self.__isPlaying
@@ -220,11 +149,3 @@ class PlayControlsVM(QObject):
         return 0
 
 
-class RaceHandler(QObject):
-    """
-    This will initialize all of the drivers, track info, playControls
-
-    """
-
-    def __init__(self):
-        super().__init__()

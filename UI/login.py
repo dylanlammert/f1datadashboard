@@ -9,9 +9,13 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
 )
-
 from ViewModels.connectivityVM import ConnectivityVM
 
+"""
+    TODO:
+    * Login button should pop up when token expires so that the app doesn't stall and make ghost requests to the cdl
+    
+"""
 
 class LoginPage(QWidget):
     """Login popup. Shows the login form, or a prompt if there's no internet."""
@@ -19,8 +23,7 @@ class LoginPage(QWidget):
     def __init__(self, connectionStatus: ConnectivityVM):
         super().__init__()
         self.connectionStatus = connectionStatus
-
-        self.setWindowTitle("F1 Login")
+        self.setWindowTitle("F1TV Login")
         self.setWindowFlag(Qt.Dialog)  # opens as a popup window
         self.setWindowModality(Qt.ApplicationModal)  # blocks the main window
         self.resize(360, 260)
@@ -94,7 +97,8 @@ class LoginForm(QFrame):
         layout.addWidget(self.passwordInput)
         layout.addWidget(self.loginBtn)
         layout.addWidget(self.statusLabel)
-        self.process.readyRead.connect(self.onOutput)
+        # NOTE: the code below is for testing purposed remove before final release
+        #self.process.readyRead.connect(self.onOutput)
 
     def login(self):
         email = self.emailInput.text().strip()

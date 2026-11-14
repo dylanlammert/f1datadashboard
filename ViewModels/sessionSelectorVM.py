@@ -1,10 +1,10 @@
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, QThreadPool
 from Services.dbhandler import DBhandler
 from ViewModels.connectivityVM import ConnectivityVM
 import pandas as pd
-from Services.api_handler import get_schedule_by_year, get_race
+from Services.api_handler import get_schedule_by_year, get_race, GetRaceWorker
 import traceback
-
+from ViewModels.driverStandingsVM import BlockLoader, BlockLoaderWorkerSignals
 """
     
 NOTE:
@@ -18,6 +18,7 @@ class SessionSelectorVM(QObject):
     # Signals
     __currentSessionIDChanged = Signal(int)
     __availableListChanged = Signal(object)
+    __currentAvailablePlaybackChanged = Signal(float)
 
     @property
     def availableListChanged(self):
@@ -27,15 +28,20 @@ class SessionSelectorVM(QObject):
     def currentSessionIDChanged(self):
         return self.__currentSessionIDChanged
 
+    @property
+    def currentAvailablePlaybackChanged(self):
+        return self.__currentAvailablePlaybackChanged
+
     # first year that the fast f1 data is logged
     FIRST_YEAR = 2018
     # make the Timezone UTC then strip the UTC tag off of the timestamp
     TODAY = pd.Timestamp.now(tz="UTC").tz_localize(None)
     CURRENT_YEAR = TODAY.year
 
-    def __init__(self, conectivityModel: ConnectivityVM):
+    def __init__(self, conectivityModel: ConnectivityVM, signals: BlockLoaderWorkerSignals):
         super().__init__()
         self.dbHandler = DBhandler()
+        self.signals = signals
         self.currentSessionID: int = 0
         self.localSessions: list[dict] = self.dbHandler.getSessionsFromDB()
         print(self.localSessions)
@@ -46,6 +52,8 @@ class SessionSelectorVM(QObject):
         # share the mem location of the model init in main
         self.connectivityVM = conectivityModel
         self.connectivityVM.onlineChanged.connect(self.onConnectionUpdate)
+        self.userLoggedIn: bool | None = None
+        self.thread_pool = QThreadPool.globalInstance()
 
     # helper functions
     def __formatYearList(self, sessionList):
@@ -67,10 +75,50 @@ class SessionSelectorVM(QObject):
                 eventName=sessionInfoDict["event_name"],
                 sessionType=sessionInfoDict["session_type"],
             )
+            #self.__updateCurrentSessionID(newSessionID= newSessionID)
+            self.__onSessionReady(newSessionID)
         else:
-            newSessionID = self.__createSessionInstance(sessionInfoDict)
+            self.pendingSessionInfo = sessionInfoDict
+            # start loading race data from api
+            worker = GetRaceWorker(sessionInfoDict["year"], sessionInfoDict["event_name"])
+            # after the race is done downloading start loading needed data into memory
+            worker.signal.finished_signal.connect(self.__onDownloadFinished)
+            self.thread_pool.start(worker)
+            #newSessionID = self.__createSessionInstance(self.__updateCurrentSessionID)
+
+    def __onDownloadFinished(self):
+        info = self.pendingSessionInfo
+
+        sessionID = self.dbHandler.getSessionID(
+            tableName= "sessions",
+            year = info["year"],
+            eventName= info["event_name"],
+            sessionType= info["session_type"],
+        )
+        self.__onSessionReady(sessionID)
+
+    def __onSessionReady(self, sessionID: int):
+        self.__updateCurrentSessionID(newSessionID= sessionID)
+        # need to clear all of the previously stored data
+        # start the worker
+        dataLoaderWorker = BlockLoader(sessionID= self.currentSessionID, signals= self.signals)
+        dataLoaderWorker.signals.currentAvailablePlaybackChanged.connect(
+            self.__currentAvailablePlaybackChanged.emit
+        )
+        self.__currentAvailablePlaybackChanged.emit(0.0)
+        self.thread_pool.start(dataLoaderWorker)
+        
+
+    def __updateCurrentSessionID(self, newSessionID):
         self.currentSessionID = newSessionID
         self.currentSessionIDChanged.emit(newSessionID)
+
+    def onLoggedIn(self, Status: bool):
+        self.userLoggedIn = Status
+        sessionList = self.fetchAvailableRaces()
+        self.availableList = sessionList
+        print("SessionSelectorVM/onLoggedIn: emiting new list")
+        self.availableListChanged.emit(sessionList)
 
     def onConnectionUpdate(self, newConnectionStatus: bool):
         # emit the real list that the view needs to display
@@ -90,9 +138,13 @@ class SessionSelectorVM(QObject):
         """
         # NOTE: need to insure this function returns list of dicts
         availableFastF1Sessions: list[dict] = []
+        if not self.userLoggedIn:
+            print("fetchAvailableRaces: user is not logged in")
+            self.__formatYearList(self.localSessions)
+            return self.localSessions
         if not self.connectivityVM.isOnline:
             # if user doesn't have internet only show the races that are already in the database
-            print("fetchAvailableRaces : > user is offline ")
+            print("fetchAvailableRaces: user is offline ")
             # TODO: change the years to local session years
             self.__formatYearList(self.localSessions)
             return self.localSessions
