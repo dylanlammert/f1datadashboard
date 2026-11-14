@@ -1154,7 +1154,7 @@ class DBhandler:
 
     # NOTE: Updated 10/27 current working area
     # NOTE: Current implementation is a little convoluted meant to reduce the # of times searching the db
-    def getLapsDataBlock(self, attributeList: list, lastLoadedLap: int = 0, blockSize: int = 10, sessionID: int = 0) -> tuple[list[dict], int, bool]:
+    def getLapsDataBlock(self, attributeList: list, sessionID: int, lastLoadedLap: int = 0, blockSize: int = 10) -> tuple[list[dict], int, bool]:
         """_summary_
 
         Args:
@@ -1247,14 +1247,29 @@ class DBhandler:
         # The query returns tuples; use the dictionaries built above. Handle
         # an empty block before calling max(), which would otherwise raise.
         if not rows:
-            endFlag = True
+            cursor.execute(
+                "SELECT 1 FROM live_driver_telemetry "
+                "WHERE session_id = ? AND session_time > ? LIMIT 1",
+                (sessionID, lastLoadedTime + blockSize + 1),
+            )
+            hasLaterRows = cursor.fetchone() is not None
+            endFlag = not hasLaterRows
+            if hasLaterRows:
+                currentLoadedTime = lastLoadedTime + blockSize
             return rows, currentLoadedTime, endFlag
 
-        # if max session time < lastloadedTime + blockSize then there is no more data to load
         currentLoadedTime = max(row["session_time"] for row in rows)
 
         if currentLoadedTime < (lastLoadedTime + blockSize):
-            endFlag = True
+            cursor.execute(
+                "SELECT 1 FROM live_driver_telemetry "
+                "WHERE session_id = ? AND session_time > ? LIMIT 1",
+                (sessionID, currentLoadedTime),
+            )
+            hasLaterRows = cursor.fetchone() is not None
+            endFlag = not hasLaterRows
+            if hasLaterRows:
+                currentLoadedTime = lastLoadedTime + blockSize
         else:
             #trim the last index from results
             rows = rows[: -1]

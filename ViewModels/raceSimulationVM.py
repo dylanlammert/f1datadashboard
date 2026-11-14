@@ -1,4 +1,4 @@
-from PySide6.QtCore import QObject, Signal, QTimer
+from PySide6.QtCore import QObject, Signal, QElapsedTimer, QTimer
 from Services.dbhandler import DBhandler
 from ViewModels.sessionSelectorVM import SessionSelectorVM
 
@@ -42,14 +42,14 @@ class PlayControlsVM(QObject):
         self.currentTime: float = 0.00
         self.currentRaceDuration: float = 0.00
         self.playBackSpeed: int = 1
+        self.playbackClock = QElapsedTimer()
         # read only
         self.dbhandler = DBhandler()
         self.sessionSelectorVM = sessionSelectorVM
         # create timer
         self.timer = QTimer(self)
-        # set interval to 1000ms or 1 second smallest measurement we need
-        # NOTE: need to change this parameter to a variable so I can update playback speed
-        self.timer.setInterval(1000)
+        # Wake every 10 ms; simulation timestamps remain in seconds.
+        self.timer.setInterval(10)
         # each update call _tick
         self.timer.timeout.connect(self.__tick)
         # NOTE: on application start we will want to change this VM to a paused start to begin
@@ -60,13 +60,15 @@ class PlayControlsVM(QObject):
         )
 
     def __tick(self):
-        """_helper function that calls setCurrentTime everytime the timer is incremented_"""
-        # print(f"timer = {self.currentTime + 1}")
-        self.setCurrentTime(self.currentTime + self.playBackSpeed)
+        """Advance simulation time by elapsed wall-clock time at the selected speed."""
+        elapsedMilliseconds = self.playbackClock.restart()
+        elapsedSeconds = elapsedMilliseconds / 1000
+        self.setCurrentTime(self.currentTime + elapsedSeconds * self.playBackSpeed)
 
     # NOTE: Might not need this instead just send the new time to the front end ui
     def __updatePlaybackBuffer(self, updatedTime: float):
         self.updatedPlaybackBuffer.emit(updatedTime)
+        
     def togglePlay(self, toggleValue: bool | None = None):
         """_function that updates the VM state to playing or paused depending on previous state_
 
@@ -84,11 +86,13 @@ class PlayControlsVM(QObject):
             else:
                 self.__isPlaying = True
                 self.updatedPlayingStatus.emit(True)
+                self.playbackClock.start()
                 self.timer.start()
         else: 
             if toggleValue == True:
                 self.__isPlaying = True
                 self.updatedPlayingStatus.emit(True)
+                self.playbackClock.start()
                 self.timer.start()
             elif toggleValue == False:
                 self.__isPlaying = False
