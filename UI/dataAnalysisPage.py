@@ -19,6 +19,7 @@ from graphs.graph_factory import Metric, GenericGraphFactory
 from Services.dbhandler import DBhandler
 from ViewModels.sessionSelectorVM import SessionSelectorVM
 from UI.Theme import theme
+from UI.aiStrategyPanel import AIStrategyPanel
 
 
 class SearchableGraphDropdown(QComboBox):
@@ -300,7 +301,10 @@ class GraphCanvasContainer(QWidget):
         self.graph_factories = {
             "Placement over Time": lambda: FigureCanvasQTAgg(
                 placement_figure_for_session(self.current_session_id)
-            )
+            ),
+            "AI Pit Stop Strategy": lambda: AIStrategyPanel(
+                self.current_session_id
+            ),
         }
 
         # ? This handles populating generic graphs into the graphs list.
@@ -371,6 +375,15 @@ class GraphCanvasContainer(QWidget):
 
     def _onSessionChanged(self, session_id: int) -> None:
         self.current_session_id = session_id
+        proxy = self.active_graphs.get("AI Pit Stop Strategy")
+        if proxy is not None:
+            container = proxy.widget()
+            strategy = (
+                container.findChild(AIStrategyPanel)
+                if container is not None else None
+            )
+            if strategy is not None:
+                strategy.set_session(session_id)
 
     # TODO: For some reason, on startup, the label ends up in the middle left of the view? I'm not really sure what the deal is. 
     # TODO:     I'm ignoring it, but it might be something to look at later.
