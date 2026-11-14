@@ -947,7 +947,12 @@ class SessionSelector(Card):
             "year": int(yearText),
             "event_name": eventText,
             "session_type": "Race",
-            "downloaded": not self.conectivityViewModel.isOnline,
+            "downloaded": any(
+                s["year"] == int(yearText)
+                and s["event_name"] == eventText
+                and s["session_type"] == "Race"
+                for s in self.sessionSelectorViewModel.localSessions
+            ),
         }
         # NOTE: debugging print statement remove in future issue
         print(f"sessionInfoDict: {sessionInfoDict}")
