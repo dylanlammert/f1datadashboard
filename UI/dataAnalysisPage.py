@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt, Signal, QPointF, QSize
 from PySide6.QtGui import QPainter, QMouseEvent, QResizeEvent
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 from graphs.placement_over_time import placement_figure_for_session
+from graphs.wet_weather_comparison import build_wet_weather_figure
 from graphs.graph_factory import Metric, GenericGraphFactory
 from Services.dbhandler import DBhandler
 from ViewModels.sessionSelectorVM import SessionSelectorVM
@@ -309,6 +310,9 @@ class GraphCanvasContainer(QWidget):
             "AI Race Strategy What-If Simulator": lambda: AIWhatIfPanel(
                 self.current_session_id
             ),
+            "Wet-Weather Driver Comparison": lambda: FigureCanvasQTAgg(
+                build_wet_weather_figure(self.current_session_id)
+            ),
         }
 
         # ? This handles populating generic graphs into the graphs list.
@@ -400,6 +404,21 @@ class GraphCanvasContainer(QWidget):
             )
             if simulator is not None:
                 simulator.set_session(session_id)
+
+        wet_proxy = self.active_graphs.get(
+            "Wet-Weather Driver Comparison"
+        )
+        if wet_proxy is not None:
+            container = wet_proxy.widget()
+            canvas = (
+                container.findChild(FigureCanvasQTAgg)
+                if container is not None else None
+            )
+            if canvas is not None:
+                new_figure = build_wet_weather_figure(session_id)
+                canvas.figure = new_figure
+                new_figure.set_canvas(canvas)
+                canvas.draw_idle()
 
     # TODO: For some reason, on startup, the label ends up in the middle left of the view? I'm not really sure what the deal is. 
     # TODO:     I'm ignoring it, but it might be something to look at later.
