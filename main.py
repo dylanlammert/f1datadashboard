@@ -8,7 +8,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QFrame,
     QLabel,
-    QSizePolicy,
 )
 from PySide6.QtGui import QPalette, Qt
 
@@ -26,7 +25,11 @@ from ViewModels.raceSimulationVM import PlayControlsVM
 from ViewModels.trackStatusVM import TrackStatusVM
 from ViewModels.sessionSelectorVM import SessionSelectorVM
 from ViewModels.connectivityVM import ConnectivityVM
-from ViewModels.driverStandingsVM import FocusDriverVM, DriverStandingsViewModel, BlockLoaderWorkerSignals
+from ViewModels.driverStandingsVM import (
+    FocusDriverVM,
+    DriverStandingsViewModel,
+    BlockLoaderWorkerSignals,
+)
 
 # import dbhandler
 from Services.dbhandler import DBhandler
@@ -35,6 +38,7 @@ from Services.api_handler import get_race
 
 # import token checker
 from Services.api_handler import isTokenValid
+
 # font styles
 from UI.Theme import DayTheme
 
@@ -91,7 +95,9 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
 
         # create the main elements and pass down the switch page function
-        self.sidebar = Sidebar(self.switch_page, self.conectivityVM, self.sessionSelectorVM)
+        self.sidebar = Sidebar(
+            self.switch_page, self.conectivityVM, self.sessionSelectorVM
+        )
         # changed the 1st self to try to pass down currentPageIndx
         self.home = HomePage(
             trackStatusViewModel=self.trackStatusVM,
@@ -114,19 +120,21 @@ class MainWindow(QMainWindow):
         mainContainerLayout.addWidget(self.sidebar)
         mainContainerLayout.addWidget(self.stack)
 
-        # run the token check 
+        # run the token check
         self.refreshLoginButton()
+
     """
     @brief this function changes the current index of the stack to
            change the current widget being shown
     """
+
     def __refreshData(self):
         print(f"{theme.redColor} clearing stored data {theme.resetColor}")
         self.driverStandingsVM.clearData()
         self.focusDriverVM.clearData()
 
     def switch_page(self, index):
-        self.playControlsVM.togglePlay(toggleValue= False)
+        self.playControlsVM.togglePlay(toggleValue=False)
         self.stack.setCurrentIndex(index)
 
     # NOTE: could fix this to use less lines
@@ -151,7 +159,7 @@ class MainWindow(QMainWindow):
 
 
 class Sidebar(QFrame):
-    def __init__(self, switch_page, connectivityVM ,sessionSelectorVM):
+    def __init__(self, switch_page, connectivityVM, sessionSelectorVM):
         super().__init__()
         self.setFixedWidth(150)
         # self.setMaximumWidth(150)
@@ -168,7 +176,9 @@ class Sidebar(QFrame):
         self.layout = QVBoxLayout(self)
         self.layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        self.loginButton = LoginButton(connectivityVM=connectivityVM, sessionSelectorVM = sessionSelectorVM)
+        self.loginButton = LoginButton(
+            connectivityVM=connectivityVM, sessionSelectorVM=sessionSelectorVM
+        )
         self.layout.addWidget(self.loginButton)
         changePageBtn = QPushButton("Home")
         # removes window auto focussing to this button on launch
@@ -200,7 +210,9 @@ class Sidebar(QFrame):
 
 
 class LoginButton(QFrame):
-    def __init__(self, connectivityVM: ConnectivityVM, sessionSelectorVM = SessionSelectorVM):
+    def __init__(
+        self, connectivityVM: ConnectivityVM, sessionSelectorVM=SessionSelectorVM
+    ):
         super().__init__()
         sectionLayout = QVBoxLayout(self)
         self.connectivityVM = connectivityVM
@@ -214,11 +226,12 @@ class LoginButton(QFrame):
                 border: 2px solid {theme.secondaryText};
                 border-radius: 12px;
             }}
-            """)
+            """
+        )
         loginlabel = QLabel(self.loginStatus)
         loginlabel.setWordWrap(True)
         loginlabel.setMinimumHeight(loginlabel.fontMetrics().height() * 4)
-        
+
         loginButton = QPushButton("Login")
         loginButton.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         loginButton.setStyleSheet(
@@ -246,16 +259,17 @@ class LoginButton(QFrame):
         self.setVisible(not isLoggedIn)
         self.sessionSelector.onLoggedIn(isLoggedIn)
 
+
 def _main():
     app = QApplication(sys.argv)
     # TODO: work on loading correct font
-    #Theme.loadFonts()
-    #app.setFont(Theme.fontStyles.qfont())
+    # Theme.loadFonts()
+    # app.setFont(Theme.fontStyles.qfont())
     # ! The app will not load without this. It needs to have a race loaded into the DB or everything breaks.
     if not Path("./f1_data.db"):
         create_schema()
         get_race(2026, "Japanese Grand Prix", "R")
-     
+
     window = MainWindow()
     window.showMaximized()
     window.show()

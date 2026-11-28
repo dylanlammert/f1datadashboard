@@ -17,6 +17,7 @@ from ViewModels.connectivityVM import ConnectivityVM
     
 """
 
+
 class LoginPage(QWidget):
     """Login popup. Shows the login form, or a prompt if there's no internet."""
 
@@ -98,7 +99,7 @@ class LoginForm(QFrame):
         layout.addWidget(self.loginBtn)
         layout.addWidget(self.statusLabel)
         # NOTE: the code below is for testing purposed remove before final release
-        #self.process.readyRead.connect(self.onOutput)
+        # self.process.readyRead.connect(self.onOutput)
 
     def login(self):
         email = self.emailInput.text().strip()

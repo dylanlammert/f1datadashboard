@@ -7,7 +7,7 @@ from fastf1.events import EventSchedule
 from PySide6.QtCore import QObject, Signal, QRunnable
 import sys
 import subprocess
-import datetime
+
 """
     TODO: 
         - If f1cache contains > 5 items delete last used item
@@ -15,12 +15,14 @@ import datetime
 
 fastf1.logger.set_log_level("DEBUG")
 
+
 class APIWorkerSignal(QObject):
     __finished = Signal(int)
 
     @property
     def finished_signal(self):
         return self.__finished
+
 
 # ? To run, use:
 # ?         worker = GetRaceWorker(year, event_name, type)
@@ -86,6 +88,7 @@ def _get_event_names(schedule: EventSchedule) -> pd.Series | None:
         _type_: _description_
     """
     return schedule.get("EventName")
+
 
 # NOTE: clean up function
 def isTokenValid() -> bool | None:

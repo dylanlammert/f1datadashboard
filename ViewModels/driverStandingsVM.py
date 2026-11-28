@@ -35,9 +35,10 @@ greenColor = "\033[92m"
 resetColor = "\033[0m"
 redColor = "\033[91m"
 
+
 class BlockLoaderWorkerSignals(QObject):
     __allBlocksLoaded = Signal(bool)
-    
+
     @property
     def finished_signal(self):
         return self.__allBlocksLoaded
@@ -49,6 +50,7 @@ class BlockLoaderWorkerSignals(QObject):
         return self.__driverStandingsBlockLoaded
 
     __driverTelemBlockLoaded = Signal(list)
+
     @property
     def driverTelemBlockChanged(self):
         return self.__driverTelemBlockLoaded
@@ -58,6 +60,7 @@ class BlockLoaderWorkerSignals(QObject):
     @property
     def currentAvailablePlaybackChanged(self):
         return self.__currentAvailablePlaybackLoaded
+
 
 class BlockLoader(QRunnable):
     # this will be run off of session Selector Change
@@ -81,21 +84,57 @@ class BlockLoader(QRunnable):
         self.lastLoadedTime: float = 0.0
         try:
             # while at least 1 data block is still loading keep running
-            while (focusDriverEndFlag != True) or (driverStandingsEndFlag != True):
+            while (not focusDriverEndFlag) or (not driverStandingsEndFlag):
                 if not driverStandingsEndFlag:
-                    lapData, self.lastLoadedLap, driverStandingsEndFlag = dbHandler.getLapsDataBlock(attributeList= ["driver", "team", "lap_number", "compound", "tyre_life", "position", "lap_start_time", "lap_end_time"], sessionID= self.sessionID, lastLoadedLap= self.lastLoadedLap )
+                    lapData, self.lastLoadedLap, driverStandingsEndFlag = (
+                        dbHandler.getLapsDataBlock(
+                            attributeList=[
+                                "driver",
+                                "team",
+                                "lap_number",
+                                "compound",
+                                "tyre_life",
+                                "position",
+                                "lap_start_time",
+                                "lap_end_time",
+                            ],
+                            sessionID=self.sessionID,
+                            lastLoadedLap=self.lastLoadedLap,
+                        )
+                    )
                     if lapData:
                         self.signals.driverStandingsBlockChanged.emit(lapData)
 
                 if not focusDriverEndFlag:
-                    driverTelem, self.lastLoadedTime, focusDriverEndFlag = dbHandler.getTelemetryDataBlock(attributeList= ["driver_code","session_time", "x_pos", "y_pos", "distance_to_driver_ahead", "gear", "throttle", "brake", "drs", "speed", "rpm"], sessionID= self.sessionID, lastLoadedTime= self.lastLoadedTime)
+                    driverTelem, self.lastLoadedTime, focusDriverEndFlag = (
+                        dbHandler.getTelemetryDataBlock(
+                            attributeList=[
+                                "driver_code",
+                                "session_time",
+                                "x_pos",
+                                "y_pos",
+                                "distance_to_driver_ahead",
+                                "gear",
+                                "throttle",
+                                "brake",
+                                "drs",
+                                "speed",
+                                "rpm",
+                            ],
+                            sessionID=self.sessionID,
+                            lastLoadedTime=self.lastLoadedTime,
+                        )
+                    )
                     if driverTelem:
                         self.signals.driverTelemBlockChanged.emit(driverTelem)
 
-                    self.signals.currentAvailablePlaybackChanged.emit(self.lastLoadedTime)
+                    self.signals.currentAvailablePlaybackChanged.emit(
+                        self.lastLoadedTime
+                    )
         finally:
             self.signals.finished_signal.emit(True)
             dbHandler.close()
+
 
 class FocusDriverVM(QObject):
     """_summary_
@@ -112,6 +151,7 @@ class FocusDriverVM(QObject):
         - update the home page with real values of live telemetry every x seconds
         - update a set of drivers each time the driver standings registers a click
     """
+
     # signal to update main UI data
     __currentDataLoaded = Signal(list)
 
@@ -126,8 +166,9 @@ class FocusDriverVM(QObject):
     def currentFocusedDriversChanged(self):
         return self.__currentFocusedDriversLoaded
 
-
-    def __init__(self, signals: BlockLoaderWorkerSignals, playControlsVM: PlayControlsVM):
+    def __init__(
+        self, signals: BlockLoaderWorkerSignals, playControlsVM: PlayControlsVM
+    ):
         super().__init__()
         self.dbHandler = DBhandler()
         self.focusedDrivers: set[str] = set()
@@ -138,7 +179,7 @@ class FocusDriverVM(QObject):
         self.dataBlockSignals.finished_signal.connect(self.printLogger)
         self.lastUpdateTime: float = 0.00
         playControlsVM.updatedTime.connect(self.__clockTick)
-        self.clockLimiter: float = .2
+        self.clockLimiter: float = 0.2
 
     def clearData(self):
         self.currentData.clear()
@@ -148,19 +189,21 @@ class FocusDriverVM(QObject):
 
     def __clockTick(self, currentTime: float):
         # for each driver in self.focusedDrivers grab data from table
-        if len(self.focusedDrivers) > 0: 
-            if (currentTime < self.lastUpdateTime - self.clockLimiter) or (currentTime > (self.lastUpdateTime + self.clockLimiter)):
+        if len(self.focusedDrivers) > 0:
+            if (currentTime < self.lastUpdateTime - self.clockLimiter) or (
+                currentTime > (self.lastUpdateTime + self.clockLimiter)
+            ):
                 # if there is a notable difference in time then update currentData
-                self.updateCurrentData(currentTime= currentTime)
-
-
+                self.updateCurrentData(currentTime=currentTime)
 
     def printLogger(self):
         """
         _helper function to debug the data block loader_
         """
-        print(f"data block loaded new data into session data for focusDriverVM, length of data: {sys.getsizeof(self.sessionData)}")
-        #print(f"{self.sessionData}")
+        print(
+            f"data block loaded new data into session data for focusDriverVM, length of data: {sys.getsizeof(self.sessionData)}"
+        )
+        # print(f"{self.sessionData}")
 
     def __dataBlockLoaded(self, newData: list):
         self.sessionData.append(newData)
@@ -211,26 +254,27 @@ class FocusDriverVM(QObject):
             return False
         else:
             # if not in focused drivers attempt to add
-            if(len(self.focusedDrivers) == 2):
+            if len(self.focusedDrivers) == 2:
                 # set is full
                 return False
             # add driver to set
             self.focusedDrivers.add(driverToToggle)
             return True
-        
-# need to get this to update before we can update the focus driver ui 
+
+
+# need to get this to update before we can update the focus driver ui
 class DriverStandingsViewModel(QObject):
     """
-    
-        NOTE:
-        this object needs to 
-        - onclick of driver change focus driver 
-        - update standings upon each lap change
-        - update standings upon each driver ahead change
-        - update each drivers position change
-            start out at 0 then if driver position > then +1 if < then -1
-        - update time behind leader
-            we could limit this to be every x seconds or update the time on each lap
+
+    NOTE:
+    this object needs to
+    - onclick of driver change focus driver
+    - update standings upon each lap change
+    - update standings upon each driver ahead change
+    - update each drivers position change
+        start out at 0 then if driver position > then +1 if < then -1
+    - update time behind leader
+        we could limit this to be every x seconds or update the time on each lap
     """
 
     __standings_loaded = Signal(list)
@@ -259,7 +303,9 @@ class DriverStandingsViewModel(QObject):
 
         self.focusDriverVM = focusDriverVM
         self.dataBlockSignals = signals
-        self.dataBlockSignals.driverStandingsBlockChanged.connect(self.__dataBlockLoaded)
+        self.dataBlockSignals.driverStandingsBlockChanged.connect(
+            self.__dataBlockLoaded
+        )
         self.dataBlockSignals.finished_signal.connect(self.printLogger)
 
         playControlsVM.updatedTime.connect(self.__onClockUpdate)
@@ -270,7 +316,7 @@ class DriverStandingsViewModel(QObject):
         self.currentLeaderEndLapTime: float = 0.00
         self.currentLeaderStartLapTime: float = 0.00
         self.currentLap: int = 0
-        
+
     def clearData(self):
         self.__driver_data.clear()
         self.standingsData.clear()
@@ -282,20 +328,25 @@ class DriverStandingsViewModel(QObject):
     def __onClockUpdate(self, newTime: float):
         # NOTE: driver standings should update every clock tick
         # check if time is > time current lap end time then update standings
-        if (newTime < self.currentLeaderStartLapTime) or (newTime > self.currentLeaderEndLapTime):
+        if (newTime < self.currentLeaderStartLapTime) or (
+            newTime > self.currentLeaderEndLapTime
+        ):
             # update standings format as list[0] leader then > from there
             currentLap = self.searchCurrentLap(newTime)
             if currentLap is None:
                 return
-            self.currentLap, self.currentLeaderStartLapTime, self.currentLeaderEndLapTime = currentLap
+            (
+                self.currentLap,
+                self.currentLeaderStartLapTime,
+                self.currentLeaderEndLapTime,
+            ) = currentLap
             # once current lap set, set standings data that will be sent to front end
             self.setStandingsData()
             self.standings_changed.emit(self.standingsData)
         return
-    
+
     def setStandingsData(self):
-        """_format the standings data and pass it to the front end_
-        """
+        """_format the standings data and pass it to the front end_"""
         driversOnLap: list[dict] = []
         for block in self.__driver_data:
             driversOnLap.extend(
@@ -305,12 +356,14 @@ class DriverStandingsViewModel(QObject):
         driversOnLap.sort(
             key=lambda row: (
                 row.get("position") is None,
-                row.get("position") if row.get("position") is not None else float("inf"),
+                row.get("position")
+                if row.get("position") is not None
+                else float("inf"),
             )
         )
         # clear standings data
         self.standingsData = []
-        
+
         for row in driversOnLap:
             driverCode = row.get("driver")
             position = row.get("position")
@@ -343,7 +396,7 @@ class DriverStandingsViewModel(QObject):
         """_search for current lap of leading driver based on time given_
         Args:
             time (float): _current playback time_
-        
+
         """
         for block in self.__driver_data:
             for lap in block:
@@ -366,11 +419,12 @@ class DriverStandingsViewModel(QObject):
         """
         _helper function to debug data block loader_
         """
-        print(f"data block loaded new data into session data for DriverStandingsVM, length: {sys.getsizeof(self.__driver_data)}")
+        print(
+            f"data block loaded new data into session data for DriverStandingsVM, length: {sys.getsizeof(self.__driver_data)}"
+        )
         for i in self.__driver_data:
             print(i[0])
-        #print(f"{self.__driver_data}")
-
+        # print(f"{self.__driver_data}")
 
     def __dataBlockLoaded(self, newData: list):
         """_this loads the data block into the list as a whole block not as an individual level_
@@ -387,7 +441,7 @@ class DriverStandingsViewModel(QObject):
 
     def getFocusDrivers(self) -> set:
         return self.focusDriverVM.focusedDrivers
-    
+
     def calculatePositionDifference(self, driverCode: str, currentPosition: int) -> int:
         for block in self.__driver_data:
             for row in block:
@@ -396,5 +450,4 @@ class DriverStandingsViewModel(QObject):
                     if startingPosition is not None:
                         return startingPosition - currentPosition
 
-        return 0 
-                
+        return 0

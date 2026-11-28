@@ -1,4 +1,5 @@
 from __future__ import annotations
+from pathlib import Path
 from PySide6.QtWidgets import (
     QLabel,
     QWidget,
@@ -11,9 +12,11 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QComboBox,
     QStackedWidget,
+    QButtonGroup,
+    QStyleFactory,
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QResizeEvent
 from UI.Theme import theme
 from ViewModels.driverProfilesVM import DriverProfilesViewModel
 
@@ -22,25 +25,116 @@ _gridMargin: int = 12
 _padding: int = 12
 _borderRadius: int = 20
 
+# ? Colors for titles, buttons, dropdowns, etc.
+_surface: str = "#21212e"
+_surface_hover: str = "#2b2b3b"
+_on_accent: str = "#0B0E14"
+
+_chevron_path = Path(__file__).resolve().parent / "images" / "downChevron.png"
+
+_SCROLL_QSS = f"""
+    QScrollArea {{ background: transparent; border: none; }}
+    QScrollBar:vertical {{ width: 6px; background: transparent; margin: 0; }}
+    QScrollBar::handle:vertical {{
+        background: {_surface}; border-radius: 3px; min-height: 24px;
+    }}
+    QScrollBar:horizontal {{ height: 6px; background: transparent; margin: 0; }}
+    QScrollBar::handle:horizontal {{
+        background: {_surface}; border-radius: 3px; min-width: 24px;
+    }}
+    QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
+    QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
+"""
+
+
+def _caption(
+    text: str, color: str = theme.secondaryText, size: int = 10, bold: bool = True
+) -> QLabel:
+    """Makes a small uppercase label. Pretty much the same thing as `_telemetryLabel` in home.py"""
+    label = QLabel(text.upper())
+    label.setStyleSheet(
+        f"""
+        background: transparent;
+        color: {color};
+        font-size: {size}px;
+        font-weight: {"bold" if bold else "normal"};
+        """
+    )
+    return label
+
+
+def _make_scroll_area(widget: QWidget, horizontal: bool = False) -> QScrollArea:
+    area = QScrollArea()
+    area.setWidgetResizable(True)
+    area.setWidget(widget)
+    area.setFrameShape(QFrame.Shape.NoFrame)
+    area.setStyleSheet(_SCROLL_QSS)
+    if horizontal:
+        area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    else:
+        area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    return area
+
 
 class Card(QFrame):
     """Setup for the cards to use for layouts"""
 
     def __init__(self):
         super().__init__()
+        # ? This fixes an issue with QSS cascading down because of not having a name
+        self.setObjectName("card")
         self.setStyleSheet(
             f"""
-                background-color: {theme.background};
-                border-radius: {_borderRadius}px;
+                QFrame#card {{
+                    background-color: {theme.background};
+                    border-radius: {_borderRadius}px;
+                }}
             """
         )
+
+
+class StatTile(QFrame):
+    def __init__(self, label_text: str, value_text: str, highlight: bool = False):
+        super().__init__()
+        self.setObjectName("statTile")
+        border = f"1px solid {theme.success}" if highlight else "none"
+        self.setStyleSheet(
+            f"""
+            QFrame#statTile {{
+                background-color: {_surface};
+                border: {border};
+                border-radius: 12px;
+            }}
+            """
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(2)
+
+        layout.addWidget(_caption(label_text))
+
+        value = QLabel(str(value_text))
+        value_color = theme.success if highlight else theme.primaryText
+        value.setStyleSheet(
+            f"""
+                background: transparent;
+                color: {value_color};
+                font-size: 20px;
+                font-weight: bold;
+            """
+        )
+        layout.addWidget(value)
 
 
 class SearchableDriverDropdown(QComboBox):
     """Dropdown menu for the head-to-head comparison view"""
 
+    _dropdown_width = 24
+
     def __init__(self, driver_codes: list[str]):
         super().__init__()
+        self.setStyle(QStyleFactory.create("Fusion"))
         # ? Allows the user to edit text and adds the list of driver codes (VER, HAM, etc.) to the dropdown
         self.setEditable(True)
         self.addItems(driver_codes)
@@ -60,18 +154,47 @@ class SearchableDriverDropdown(QComboBox):
         self.setStyleSheet(
             f"""
             QComboBox {{
-                background-color: #21212e;
+                background-color: {_surface};
                 color: {theme.primaryText};
+                border: none;
                 border-radius: 8px;
                 padding: 6px 12px;
                 font-weight: bold;
             }}
+            QComboBox:hover {{
+                background-color: {_surface_hover};
+            }}
+            QComboBox::drop-down {{
+                subcontrol-origin: padding;
+                subcontrol-position: top right;
+                width: {self._dropdown_width}px;
+                border: none;
+            }}
+            QComboBox::down-arrow {{
+                image: none;
+            }}
             QComboBox QAbstractItemView {{
                 background-color: #16161f;
                 color: {theme.primaryText};
+                border: none;
+                outline: 0;
                 selection-background-color: {theme.info};
             }}
             """
+        )
+
+        self.chevron_label = QLabel(self)
+        self.chevron_label.setPixmap(QPixmap(str(_chevron_path)))
+        self.chevron_label.setScaledContents(True)
+        self.chevron_label.setFixedSize(18, 18)
+        self.chevron_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
+    def resizeEvent(self, e: QResizeEvent) -> None:
+        super().resizeEvent(e)
+        offset = (self._dropdown_width - self.chevron_label.width()) // 2
+        self.chevron_label.move(
+            self.width() - self._dropdown_width + offset,
+            (self.height() - self.chevron_label.height()) // 2,
         )
 
 
@@ -101,7 +224,11 @@ class ModeHeaderBar(QWidget):
 
         title = QLabel("Driver Profiles")
         title.setStyleSheet(
-            "color: {theme.primaryText}; font-size: 16px; font-weight: bold;"
+            f"""
+            color: {theme.primaryText}; 
+            font-size: 16px; 
+            font-weight: bold;
+            """
         )
 
         def _button_formatting_factory(button: QPushButton):
@@ -112,11 +239,15 @@ class ModeHeaderBar(QWidget):
             button.setStyleSheet(
                 f"""
                 QPushButton {{
-                    background-color: #21212e;
+                    background-color: {_surface};
                     color: {theme.primaryText};
+                    border: none;
                     border-radius: 8px;
                     padding: 4px 12px;
                     font-weight: bold;
+                }}
+                QPushButton:hover {{
+                    background-color: {_surface_hover};
                 }}
                 QPushButton:checked {{
                     background-color: {theme.info};
@@ -172,7 +303,7 @@ class DriverNavBar(Card):
 
     def __init__(self, driver_codes: list[str]):
         super().__init__()
-        self.setFixedHeight(64)
+        self.setFixedHeight(72)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         layout = QHBoxLayout(self)
@@ -180,11 +311,11 @@ class DriverNavBar(Card):
         layout.setContentsMargins(_padding, _padding, _padding, _padding)
         layout.setSpacing(10)
 
-        title_label = QLabel("Drivers")
-        title_label.setStyleSheet(
-            f"color: {theme.primaryText}; font-weight: bold; font-size: 14px;"
-        )
-        layout.addWidget(title_label)
+        layout.addWidget(_caption("Drivers", color=theme.primaryText, size=12))
+
+        self._button_group = QButtonGroup(self)
+        self._button_group.setExclusive(True)
+        self._buttons: dict[str, QPushButton] = {}
 
         # ? Scrollable container for drivers
         driver_container = QHBoxLayout()
@@ -193,35 +324,51 @@ class DriverNavBar(Card):
 
         for driver in driver_codes:
             btn = QPushButton(driver)
+            btn.setCheckable(True)
             btn.setFixedSize(50, 36)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setStyleSheet(
                 f"""
                 QPushButton {{
-                    background-color: #21212e;
+                    background-color: {_surface};
                     color: {theme.primaryText};
+                    border: none;
                     border-radius: 10px;
                     font-weight: bold;
                 }}
                 QPushButton:hover {{
-                    background-color: {theme.info}
+                    background-color: {_surface_hover};
+                }}
+                QPushButton:checked {{
+                    background-color: {theme.info};
+                    color: #ffffff;
                 }}
                 """
             )
             btn.clicked.connect(
                 lambda checked=False, code=driver: self._on_driver_button_clicked(code)
             )
+            self._button_group.addButton(btn)
+            self._buttons[driver] = btn
             driver_container.addWidget(btn)
 
         container_widget = QWidget()
+        container_widget.setStyleSheet("background: transparent;")
         container_widget.setLayout(driver_container)
 
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setWidget(container_widget)
-        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        scroll_area.setStyleSheet("background: transparent;")
+        layout.addWidget(_make_scroll_area(container_widget, horizontal=True))
 
-        layout.addWidget(scroll_area)
+    def set_selected(self, code: str) -> None:
+        """Highlights the button with the passed `code`"""
+        button = self._buttons.get(code)
+        if button is not None:
+            button.setChecked(True)
+            return
+        # ? We have to remove the exclusive tag to uncheck buttons
+        self._button_group.setExclusive(False)
+        for btn in self._buttons.values():
+            btn.setChecked(False)
+        self._button_group.setExclusive(True)
 
     # ? Just a helper to emit the signal as changed.
     def _on_driver_button_clicked(self, code):
@@ -263,33 +410,58 @@ class DriverAboutSection(Card):
 
         self.name = QLabel("SELECT A DRIVER")
         self.name.setStyleSheet(
-            f"color: {theme.primaryText}; font-size: 18px; font-weight: bold;"
+            f"""
+            background: transparent;
+            color: {theme.primaryText}; 
+            font-size: 18px; 
+            font-weight: bold;
+            """
         )
 
-        about_title = QLabel("BIOGRAPHY")
-        about_title.setStyleSheet(
-            f"color: {theme.secondaryText}; font-weight: bold; font-size: 12px;"
+        self.code_badge = QLabel("")
+        self.code_badge.setStyleSheet(
+            f"""
+            background-color: {theme.success};
+            color: {_on_accent};
+            font-size: 12px;
+            font-weight: bold;
+            padding: 4px 12px;
+            border-radius: 6px;
+            """
+        )
+        self.code_badge.hide()
+
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setStyleSheet(
+            f"""
+            background-color: {_surface};
+            max-height: 1px;
+            border: none;
+            """
         )
 
         self.about_text = QLabel(
             "Click on a driver above to view their biography and stats."
         )
         self.about_text.setWordWrap(True)
-        self.about_text.setStyleSheet(f"color: {theme.primaryText}; line-height: 1.4;")
+        self.about_text.setStyleSheet(
+            f"""
+            background: transparent;
+            color: {theme.primaryText};
+            font-size: 13px;
+            """
+        )
         self.about_text.setAlignment(
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
         )
 
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setWidget(self.about_text)
-        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        scroll_area.setStyleSheet("background: transparent;")
-
         layout.addWidget(self.image_holder, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self.name, alignment=Qt.AlignmentFlag.AlignHCenter)
-        layout.addWidget(about_title, alignment=Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(scroll_area)
+        layout.addWidget(self.code_badge, alignment=Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(divider)
+        layout.addWidget(_caption("Biography"), alignment=Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(_make_scroll_area(self.about_text))
 
     # ? Helpers to update the displayed text
     def update_bio(self, bio_text: str) -> None:
@@ -301,137 +473,80 @@ class DriverAboutSection(Card):
     def update_img(self, pixmap: QPixmap) -> None:
         self.image_holder.setPixmap(pixmap)
 
+    def update_code(self, driver_code: str) -> None:
+        self.code_badge.setText(driver_code)
+        self.code_badge.setVisible(bool(driver_code))
+
 
 class DriverStatsSection(Card):
     """Stat section card on the right side of the view"""
 
-    def __init__(self, view_model: DriverProfilesViewModel):
+    def __init__(
+        self,
+        view_model: DriverProfilesViewModel,
+        title: str = "Career Stats",
+        columns: int = 2,
+    ):
         super().__init__()
         self.view_model = view_model
+        self._columns = columns
 
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(_padding, _padding, _padding, _padding)
         self.main_layout.setSpacing(12)
 
-        # ! Removed for now
-        '''
-        placements_title = QLabel("Recent Placements")
-        placements_title.setStyleSheet(
-            f"color: {theme.secondaryText}; font-weight: bold; font-size: 12px;"
+        self.title_label = _caption(title, color=theme.primaryText, size=12)
+        self.main_layout.addWidget(self.title_label)
+
+        self.stats_grid = QGridLayout()
+        self.stats_grid.setContentsMargins(0, 0, 0, 0)
+        self.stats_grid.setSpacing(10)
+        for col in range(self._columns):
+            self.stats_grid.setColumnStretch(col, 1)
+        self._show_placeholder()
+
+        content = QWidget()
+        content.setStyleSheet("background: transparent;")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.addLayout(self.stats_grid)
+        content_layout.addStretch()
+
+        self.main_layout.addWidget(_make_scroll_area(content), 1)
+
+    def set_title(self, title: str) -> None:
+        self.title_label.setText(title.upper())
+
+    def _show_placeholder(self) -> None:
+        placeholder = QLabel("Select a driver to view their stats.")
+        placeholder.setStyleSheet(
+            f"""
+            background: transparent;
+            color: {theme.secondaryText};
+            """
         )
-        self.main_layout.addWidget(placements_title)
-        # TODO: Pull this from Viewmodel later
-        placement_history = [8, 1, 2, 1, 4]
-        location_history = ["London", "Paris", "Norway", "Quatar", "Turkey"]
-        formatted_cards = self.view_model.get_formatted_placements(
-            placement_history, location_history
-        )
+        self.stats_grid.addWidget(placeholder, 0, 0, 1, self._columns)
 
-        race_history = QHBoxLayout()
-        race_history.setSpacing(8)
+    def _clear_grid(self) -> None:
+        while (item := self.stats_grid.takeAt(0)) is not None:
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
 
-        for placement_str, location_str in formatted_cards:
-            card_frame = QFrame()
-            card_frame.setFixedSize(75, 75)
-            card_frame.setStyleSheet(
-                """
-                background-color: #21212e;
-                border-radius: 12px;
-                """
-            )
-            card_layout = QVBoxLayout(card_frame)
-            card_layout.setContentsMargins(4, 4, 4, 4)
+    def update_stats(
+        self, driver_stats: dict[str, str], winners: set[str] | None = None
+    ) -> None:
+        self._clear_grid()
 
-            placement_label = QLabel(placement_str)
-            placement_label.setStyleSheet(
-                f"color: {theme.info}; font-weight: bold; font-size: 16px;"
-            )
-            placement_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        if not driver_stats:
+            self._show_placeholder()
+            return
 
-            location_label = QLabel(location_str)
-            location_label.setStyleSheet(
-                f"color: {theme.secondaryText}; font-size: 11px;"
-            )
-            location_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            card_layout.addWidget(placement_label)
-            card_layout.addWidget(location_label)
-
-            race_history.addWidget(card_frame)
-
-        race_history.addStretch()
-
-        race_widget = QWidget()
-        race_widget.setLayout(race_history)
-        
-
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setWidget(race_widget)
-        scroll_area.setFixedHeight(95)
-        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-        scroll_area.setStyleSheet("background: transparent;")
-        self.main_layout.addWidget(scroll_area)
-        '''
-
-        self.career_stats_layout = QGridLayout()
-        self.career_placeholder = QLabel("Select a driver to view career statistics.")
-        self.career_placeholder.setStyleSheet(f"color: {theme.secondaryText};")
-        self.career_stats_layout.addWidget(self.career_placeholder, 0, 0)
-
-        career_stats_widget = QWidget()
-        career_stats_widget.setLayout(self.career_stats_layout)
-
-        career_stats_scroll = QScrollArea()
-        career_stats_scroll.setWidgetResizable(True)
-        career_stats_scroll.setWidget(career_stats_widget)
-        career_stats_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        career_stats_scroll.setStyleSheet("background: transparent;")
-
-        self.main_layout.addWidget(career_stats_scroll)
-
-    def update_stats(self, driver_stats: dict[str, str]) -> None:
-        while self.career_stats_layout.count():
-            item = self.career_stats_layout.takeAt(0)
-
-            # ? PyLance was being an ass about "None" not having .deleteLater() despite a very elegant assert statement (assert item is not None)
-            # ?     so now we have to deal with this and it's ugly and I hate it with all my heart <3
-            if item is not None and item.widget():
-                widget = item.widget()
-                if widget is not None:
-                    widget.deleteLater()
-
-        career_stats_title = QLabel("Career Stats")
-        career_stats_title.setStyleSheet(
-            f"color: {theme.primaryText}; font-size: 14px; font-weight: bold;"
-        )
-        self.career_stats_layout.addWidget(
-            career_stats_title, 0, 0, 1, 2, alignment=Qt.AlignmentFlag.AlignCenter
-        )
-
-        for row_idx, (label_text, value_text) in enumerate(
-            driver_stats.items(), start=1
-        ):
-            label = QLabel(label_text)
-            label.setStyleSheet(f"color: {theme.secondaryText}; font-size: 13px;")
-
-            value = QLabel(str(value_text))
-            value.setStyleSheet(
-                f"color: {theme.primaryText}; font-size: 13px; font-weight: bold;"
-            )
-
-            grid_row = row_idx * 2
-            self.career_stats_layout.addWidget(
-                label, grid_row, 0, alignment=Qt.AlignmentFlag.AlignLeft
-            )
-            self.career_stats_layout.addWidget(
-                value, grid_row, 1, alignment=Qt.AlignmentFlag.AlignRight
-            )
-
-            line = QFrame()
-            line.setFrameShape(QFrame.Shape.HLine)
-            line.setStyleSheet("background-color: #21212e; max-height: 1px")
-            self.career_stats_layout.addWidget(line, grid_row + 1, 0, 1, 2)
+        winners = winners or set()
+        for index, (label_text, value_text) in enumerate(driver_stats.items()):
+            row, col = divmod(index, self._columns)
+            tile = StatTile(label_text, value_text, highlight=label_text in winners)
+            self.stats_grid.addWidget(tile, row, col)
 
     def add_header_widget(self, widget: QWidget):
         """Helper to insert a widget to the top of the main card.
@@ -449,6 +564,9 @@ class DriverProfiles(QWidget):
         super().__init__()
         self.view_model = view_model
         self.driver_codes = self.view_model.get_driver_codes()
+
+        self._stats_a: dict[str, str] = {}
+        self._stats_b: dict[str, str] = {}
 
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(12)
@@ -500,7 +618,7 @@ class DriverProfiles(QWidget):
 
         self.dropdown_a.currentTextChanged.connect(self._driver_selector_helper)
         self.nav_bar.selected_driver_changed.connect(self.dropdown_a.setCurrentText)
-        self.dropdown_b.currentTextChanged.connect(self.view_model.select_driver_b)
+        self.dropdown_b.currentTextChanged.connect(self._driver_b_selector_helper)
 
         # ? Helps refresh the UI whenever the seasonal toggle is checked
         self.header_bar.seasonal_mode_toggled.connect(self._on_seasonal_mode_toggled)
@@ -508,9 +626,9 @@ class DriverProfiles(QWidget):
         self.view_model.bio_changed.connect(self.driver_about_section.update_bio)
         self.view_model.name_changed.connect(self.driver_about_section.update_name)
         self.view_model.img_changed.connect(self.driver_about_section.update_img)
-        self.view_model.stats_changed.connect(self.driver_a_stats_section.update_stats)
 
-        self.view_model.stats_changed.connect(self.driver_b_stats_section.update_stats)
+        self.view_model.stats_changed.connect(self._on_stats_a)
+        self.view_model.stats_b_changed.connect(self._on_stats_b)
 
     def _set_compare_mode(self, enabled: bool) -> None:
         """Helper function for toggling comparison mode
@@ -522,33 +640,53 @@ class DriverProfiles(QWidget):
             self.nav_bar.hide()
             self.left_stack.setCurrentIndex(1)
             self.dropdown_b.show()
-
-            self.view_model.stats_changed.disconnect(
-                self.driver_b_stats_section.update_stats
-            )
-            self.view_model.stats_b_changed.connect(
-                self.driver_b_stats_section.update_stats
-            )
         else:
             self.nav_bar.show()
             self.left_stack.setCurrentIndex(0)
             self.dropdown_b.hide()
 
-            self.view_model.stats_b_changed.disconnect(
-                self.driver_b_stats_section.update_stats
-            )
-            self.view_model.stats_changed.connect(
-                self.driver_b_stats_section.update_stats
-            )
+        self._render_stats()
+
+    def _on_stats_a(self, stats: dict) -> None:
+        self._stats_a = stats
+        self._render_stats()
+
+    def _on_stats_b(self, stats: dict) -> None:
+        self._stats_b = stats
+        self._render_stats()
+
+    def _render_stats(self) -> None:
+        if not self.header_bar.is_compare_mode:
+            self.driver_a_stats_section.update_stats(self._stats_a)
+            self.driver_b_stats_section.update_stats(self._stats_a)
+            return
+
+        wins_a, wins_b = self.view_model.compare_stats(self._stats_a, self._stats_b)
+        self.driver_a_stats_section.update_stats(self._stats_a, wins_a)
+        self.driver_b_stats_section.update_stats(self._stats_b, wins_b)
 
     def _driver_selector_helper(self, driver_code: str) -> None:
         seasonal = self.header_bar.is_seasonal_mode
-        print(f"Seasonal mode: {seasonal}")
         self.view_model.select_driver(driver_code, seasonal)
+
+    def _driver_b_selector_helper(self, driver_code: str) -> None:
+        seasonal = self.header_bar.is_seasonal_mode
+        self.view_model.select_driver_b(driver_code, seasonal)
+
+    def _refresh_stat_titles(self, seasonal: bool) -> None:
+        title = "Seasonal Stats" if seasonal else "Career Stats"
+        self.driver_a_stats_section.set_title(title)
+        self.driver_b_stats_section.set_title(title)
 
     # ? Leaving `checked` in here despite it not being accessed. I can't remember if PySide6 wants the connection here regardless of if it's used or not.
     def _on_seasonal_mode_toggled(self, checked: bool) -> None:
+        self._refresh_stat_titles(checked)
+
         current_driver = self.dropdown_a.currentText()
-        print(f"Accessing driver {current_driver}")
         if current_driver:
             self._driver_selector_helper(current_driver)
+
+        if self.header_bar.is_compare_mode:
+            driver_b = self.dropdown_b.currentText()
+            if driver_b:
+                self._driver_b_selector_helper(driver_b)

@@ -1,4 +1,3 @@
-
 """Reusable AI pit stop strategy insights for Ghost Racer."""
 
 import pandas as pd
@@ -32,14 +31,10 @@ def get_strategy_insights(
 
     driver_laps = laps[laps["driver"] == driver]
 
-    current = driver_laps[
-        driver_laps["lap_number"] == current_lap
-    ]
+    current = driver_laps[driver_laps["lap_number"] == current_lap]
 
     if current.empty:
-        raise ValueError(
-            f"No lap {current_lap} data available for {driver}."
-        )
+        raise ValueError(f"No lap {current_lap} data available for {driver}.")
 
     row = current.iloc[0]
     compound = str(row["compound"]).upper()
@@ -51,9 +46,10 @@ def get_strategy_insights(
         raise ValueError("Tyre life data is unavailable.")
 
     previous_compounds = set(
-        driver_laps[
-            driver_laps["lap_number"] <= current_lap
-        ]["compound"].dropna().astype(str).str.upper()
+        driver_laps[driver_laps["lap_number"] <= current_lap]["compound"]
+        .dropna()
+        .astype(str)
+        .str.upper()
     )
 
     must_change = len(previous_compounds & set(DRY_COMPOUNDS)) < 2

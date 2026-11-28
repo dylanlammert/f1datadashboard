@@ -1,10 +1,14 @@
-
 """Interactive historical pit stop strategy panel for Ghost Racer."""
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QComboBox, QSpinBox, QPushButton, QPlainTextEdit,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QComboBox,
+    QSpinBox,
+    QPushButton,
+    QPlainTextEdit,
 )
 
 from ML.pit_window import load_race_laps
@@ -121,15 +125,9 @@ class AIStrategyPanel(QWidget):
             }
         """)
 
-        self.driver_picker.currentTextChanged.connect(
-            self._update_lap_range
-        )
-        self.previous_driver.clicked.connect(
-            lambda: self._cycle_driver(-1)
-        )
-        self.next_driver.clicked.connect(
-            lambda: self._cycle_driver(1)
-        )
+        self.driver_picker.currentTextChanged.connect(self._update_lap_range)
+        self.previous_driver.clicked.connect(lambda: self._cycle_driver(-1))
+        self.next_driver.clicked.connect(lambda: self._cycle_driver(1))
         self.calculate_button.clicked.connect(self.calculate)
         self.set_session(session_id)
 
@@ -156,9 +154,7 @@ class AIStrategyPanel(QWidget):
             self.results.setPlainText(f"Unable to load race data: {exc}")
             return
 
-        drivers = sorted(
-            self.laps["driver"].dropna().astype(str).unique()
-        )
+        drivers = sorted(self.laps["driver"].dropna().astype(str).unique())
         self.driver_picker.addItems(drivers)
         self.calculate_button.setEnabled(bool(drivers))
         self._update_lap_range()
@@ -203,9 +199,7 @@ class AIStrategyPanel(QWidget):
 
             recommendation = result["recommended_pit_lap"]
             pit_lap = (
-                str(recommendation)
-                if recommendation is not None
-                else "No further stop"
+                str(recommendation) if recommendation is not None else "No further stop"
             )
 
             details = [
@@ -227,6 +221,4 @@ class AIStrategyPanel(QWidget):
             self.results.setPlainText("\n".join(details))
 
         except Exception as exc:
-            self.results.setPlainText(
-                f"Strategy unavailable for this selection: {exc}"
-            )
+            self.results.setPlainText(f"Strategy unavailable for this selection: {exc}")

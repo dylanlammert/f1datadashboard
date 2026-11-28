@@ -286,7 +286,10 @@ class GraphCanvasContainer(QWidget):
         self.view.on_graph_pressed = self._bring_to_front
         layout.addWidget(self.view)
 
-        self.empty_label = QLabel("Select a graph from the dropdown to start analyzing session data.", self.view)
+        self.empty_label = QLabel(
+            "Select a graph from the dropdown to start analyzing session data.",
+            self.view,
+        )
         self.empty_label.setStyleSheet("""
             color: #a0a0b0;
             font-size: 18px;
@@ -303,9 +306,7 @@ class GraphCanvasContainer(QWidget):
             "Placement over Time": lambda: FigureCanvasQTAgg(
                 placement_figure_for_session(self.current_session_id)
             ),
-            "AI Pit Stop Strategy": lambda: AIStrategyPanel(
-                self.current_session_id
-            ),
+            "AI Pit Stop Strategy": lambda: AIStrategyPanel(self.current_session_id),
             "AI Race Strategy What-If Simulator": lambda: AIWhatIfPanel(
                 self.current_session_id
             ),
@@ -383,25 +384,21 @@ class GraphCanvasContainer(QWidget):
         if proxy is not None:
             container = proxy.widget()
             strategy = (
-                container.findChild(AIStrategyPanel)
-                if container is not None else None
+                container.findChild(AIStrategyPanel) if container is not None else None
             )
             if strategy is not None:
                 strategy.set_session(session_id)
 
-        what_if_proxy = self.active_graphs.get(
-            "AI Race Strategy What-If Simulator"
-        )
+        what_if_proxy = self.active_graphs.get("AI Race Strategy What-If Simulator")
         if what_if_proxy is not None:
             container = what_if_proxy.widget()
             simulator = (
-                container.findChild(AIWhatIfPanel)
-                if container is not None else None
+                container.findChild(AIWhatIfPanel) if container is not None else None
             )
             if simulator is not None:
                 simulator.set_session(session_id)
 
-    # TODO: For some reason, on startup, the label ends up in the middle left of the view? I'm not really sure what the deal is. 
+    # TODO: For some reason, on startup, the label ends up in the middle left of the view? I'm not really sure what the deal is.
     # TODO:     I'm ignoring it, but it might be something to look at later.
     def _update_empty_state(self):
         is_empty = len(self.active_graphs) == 0

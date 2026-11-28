@@ -5,6 +5,8 @@ from Services.dbhandler import DBhandler
 from PySide6.QtGui import QPixmap, QPainter, QPainterPath, QImage
 from bs4 import BeautifulSoup
 
+import re
+
 
 class ImageWorkerSignals(QObject):
     # ? Private access variable, the double underscore should prevent use outside of the class unless through the property.
@@ -19,7 +21,13 @@ class ImageWorker(QRunnable):
     """Worker object to edit image on a second thread"""
 
     def __init__(
-        self, scraper: DriverStatScraper, soup: BeautifulSoup, signals: ImageWorkerSignals, target: str, driver_code: str, size: int = 100
+        self,
+        scraper: DriverStatScraper,
+        soup: BeautifulSoup,
+        signals: ImageWorkerSignals,
+        target: str,
+        driver_code: str,
+        size: int = 100,
     ):
         super().__init__()
         self.scraper = scraper
@@ -98,6 +106,38 @@ class DriverProfilesViewModel(QObject):
     @property
     def img_b_changed(self):
         return self.__img_b_loaded
+
+    # ? Stats where the smaller number is better
+    _LOWER_IS_BETTER = {
+        "DNFs",
+        "Season Position",
+    }
+
+    # ? These won't be highlighted because they don't convey "good" or "bad"
+    _NEUTRAL = {
+        "Grand Prix Entered",
+        "Grand Prix Races",
+        "Sprint Races",
+        "Status",
+        "ERROR",
+    }
+
+    # I never thought my Path of Exile regular expression filter making would be useful outside of that game, but here we are. Spreadsheet sim strikes again.
+
+    # Here's an explanation:
+    # -?        looks for an optional negative sign
+    # \d        checks the first digit (making sure there's not just a decimal or bare negative sign here)
+    # [\d,]*    checks for any number of additional digits or commas
+    # \.?       checks for an optional decimal point
+    # \d*       checks for any number of optional digits AFTER the decimal point
+    _NUMBER_RE = re.compile(r"-?\d[\d,]*\.?\d*")
+
+    # This one's explanation is:
+    # \(        looks for an opening parenthesis
+    # x         looks for a literal 'x' (used in multiplier quantities in the driver profiles page, like "Highest Grid Position")
+    # (\d+)     looks for at least one digit and places them inside a capture group (basically just grabbing the digits instead of the whole 'x36' or whatever)
+    # \)        looks for a closing parenthesis
+    _COUNT_RE = re.compile(r"\(x(\d+)\)")
 
     def __init__(self):
         """Generic initialization of the `DriverProfilesViewModel` class
@@ -237,7 +277,7 @@ class DriverProfilesViewModel(QObject):
         worker = ImageWorker(self.scraper, soup, self._image_signals, "a", driver_code)
         self.thread_pool.start(worker)
 
-    def select_driver_b(self, driver_code: str):
+    def select_driver_b(self, driver_code: str, seasonal: bool):
         """Binds to the signal objects from the driverProfiles to update the display
 
         Args:
@@ -260,14 +300,20 @@ class DriverProfilesViewModel(QObject):
             self.name_b_changed.emit(_driver_display_name)
             raise ValueError(f"Driver not found: {driver_name}. Showing default values")
 
-        career_stats = self.get_career_stats(soup)
-        if not career_stats:
-            career_stats = {"Status": "No Stats Available"}
+        if seasonal:
+            stats = self.get_season_stats(soup)
+        else:
+            stats = self.get_career_stats(soup)
 
-        self.stats_b_changed.emit(career_stats)
+        if not stats:
+            stats = {"Status": "No Stats Available"}
+
+        self.stats_b_changed.emit(stats)
         self.name_b_changed.emit(_driver_display_name)
 
-        worker = ImageWorker(self.scraper, soup, self._image_signals, "b", driver_code, size=60)
+        worker = ImageWorker(
+            self.scraper, soup, self._image_signals, "b", driver_code, size=60
+        )
         self.thread_pool.start(worker)
 
     # Helper Methods
@@ -316,8 +362,51 @@ class DriverProfilesViewModel(QObject):
         elif target == "b" and driver_code == self._current_driver_b_code:
             self.img_b_changed.emit(pixmap)
 
+    def _parse_stats(self, label: str, value: str) -> tuple[float, float] | None:
+        """Turns a stat into a sort key where the biggest key is always better.
 
-def _main(): 
+        Handles stuff like ("123.4"), ("3rd"), and the weird tuple things that get scraped like ("1 (x105)").
+        Returns None if there's nothing to compare.
+        """
+        text = str(value).strip()
+        match = self._NUMBER_RE.search(text)
+        if match is None:
+            return None
+
+        number = float(match.group().replace(",", ""))
+
+        # ? "1 (x105)" means "best was 1st, achieved 105 times": lower position wins, then higher count breaks ties
+        if label.startswith("Highest"):
+            count_match = self._COUNT_RE.search(text)
+            count = float(count_match.group(1)) if count_match else 0.0
+            return (-number, count)
+
+        if label in self._LOWER_IS_BETTER:
+            return (-number, 0.0)
+
+        return (number, 0.0)
+
+    def compare_stats(
+        self, stats_a: dict[str, str], stats_b: dict[str, str]
+    ) -> tuple[set[str], set[str]]:
+        wins_a: set[str] = set()
+        wins_b: set[str] = set()
+
+        for label in stats_a.keys() & stats_b.keys():
+            if label in self._NEUTRAL:
+                continue
+
+            key_a = self._parse_stats(label, stats_a[label])
+            key_b = self._parse_stats(label, stats_b[label])
+            if key_a is None or key_b is None or key_a == key_b:
+                continue
+
+            (wins_a if key_a > key_b else wins_b).add(label)
+
+        return wins_a, wins_b
+
+
+def _main():
     vm_test = DriverProfilesViewModel()
     data = vm_test.get_driver_codes()
     print(data)
