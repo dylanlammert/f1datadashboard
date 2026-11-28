@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QStackedWidget,
     QButtonGroup,
-    QStyleFactory
+    QStyleFactory,
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap, QResizeEvent
@@ -46,7 +46,10 @@ _SCROLL_QSS = f"""
     QScrollBar::add-page, QScrollBar::sub-page {{ background: none; }}
 """
 
-def _caption(text: str, color: str = theme.secondaryText, size: int = 10, bold: bool = True) -> QLabel:
+
+def _caption(
+    text: str, color: str = theme.secondaryText, size: int = 10, bold: bool = True
+) -> QLabel:
     """Makes a small uppercase label. Pretty much the same thing as `_telemetryLabel` in home.py"""
     label = QLabel(text.upper())
     label.setStyleSheet(
@@ -59,6 +62,7 @@ def _caption(text: str, color: str = theme.secondaryText, size: int = 10, bold: 
     )
     return label
 
+
 def _make_scroll_area(widget: QWidget, horizontal: bool = False) -> QScrollArea:
     area = QScrollArea()
     area.setWidgetResizable(True)
@@ -70,6 +74,7 @@ def _make_scroll_area(widget: QWidget, horizontal: bool = False) -> QScrollArea:
     else:
         area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     return area
+
 
 class Card(QFrame):
     """Setup for the cards to use for layouts"""
@@ -86,6 +91,7 @@ class Card(QFrame):
                 }}
             """
         )
+
 
 class StatTile(QFrame):
     def __init__(self, label_text: str, value_text: str, highlight: bool = False):
@@ -181,9 +187,7 @@ class SearchableDriverDropdown(QComboBox):
         self.chevron_label.setPixmap(QPixmap(str(_chevron_path)))
         self.chevron_label.setScaledContents(True)
         self.chevron_label.setFixedSize(18, 18)
-        self.chevron_label.setAttribute(
-            Qt.WidgetAttribute.WA_TransparentForMouseEvents
-        )
+        self.chevron_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
     def resizeEvent(self, e: QResizeEvent) -> None:
         super().resizeEvent(e)
@@ -477,7 +481,12 @@ class DriverAboutSection(Card):
 class DriverStatsSection(Card):
     """Stat section card on the right side of the view"""
 
-    def __init__(self, view_model: DriverProfilesViewModel, title: str = "Career Stats", columns: int = 2):
+    def __init__(
+        self,
+        view_model: DriverProfilesViewModel,
+        title: str = "Career Stats",
+        columns: int = 2,
+    ):
         super().__init__()
         self.view_model = view_model
         self._columns = columns
@@ -524,7 +533,9 @@ class DriverStatsSection(Card):
             if widget is not None:
                 widget.deleteLater()
 
-    def update_stats(self, driver_stats: dict[str, str], winners: set[str] | None = None) -> None:
+    def update_stats(
+        self, driver_stats: dict[str, str], winners: set[str] | None = None
+    ) -> None:
         self._clear_grid()
 
         if not driver_stats:
@@ -615,7 +626,7 @@ class DriverProfiles(QWidget):
         self.view_model.bio_changed.connect(self.driver_about_section.update_bio)
         self.view_model.name_changed.connect(self.driver_about_section.update_name)
         self.view_model.img_changed.connect(self.driver_about_section.update_img)
-        
+
         self.view_model.stats_changed.connect(self._on_stats_a)
         self.view_model.stats_b_changed.connect(self._on_stats_b)
 

@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 
 import re
 
+
 class ImageWorkerSignals(QObject):
     # ? Private access variable, the double underscore should prevent use outside of the class unless through the property.
     __finished = Signal(str, str, QImage)
@@ -20,7 +21,13 @@ class ImageWorker(QRunnable):
     """Worker object to edit image on a second thread"""
 
     def __init__(
-        self, scraper: DriverStatScraper, soup: BeautifulSoup, signals: ImageWorkerSignals, target: str, driver_code: str, size: int = 100
+        self,
+        scraper: DriverStatScraper,
+        soup: BeautifulSoup,
+        signals: ImageWorkerSignals,
+        target: str,
+        driver_code: str,
+        size: int = 100,
     ):
         super().__init__()
         self.scraper = scraper
@@ -102,7 +109,7 @@ class DriverProfilesViewModel(QObject):
 
     # ? Stats where the smaller number is better
     _LOWER_IS_BETTER = {
-        "DNFs", 
+        "DNFs",
         "Season Position",
     }
 
@@ -297,14 +304,16 @@ class DriverProfilesViewModel(QObject):
             stats = self.get_season_stats(soup)
         else:
             stats = self.get_career_stats(soup)
-        
+
         if not stats:
             stats = {"Status": "No Stats Available"}
 
         self.stats_b_changed.emit(stats)
         self.name_b_changed.emit(_driver_display_name)
 
-        worker = ImageWorker(self.scraper, soup, self._image_signals, "b", driver_code, size=60)
+        worker = ImageWorker(
+            self.scraper, soup, self._image_signals, "b", driver_code, size=60
+        )
         self.thread_pool.start(worker)
 
     # Helper Methods
@@ -377,7 +386,9 @@ class DriverProfilesViewModel(QObject):
 
         return (number, 0.0)
 
-    def compare_stats(self, stats_a: dict[str, str], stats_b: dict[str, str]) -> tuple[set[str], set[str]]:
+    def compare_stats(
+        self, stats_a: dict[str, str], stats_b: dict[str, str]
+    ) -> tuple[set[str], set[str]]:
         wins_a: set[str] = set()
         wins_b: set[str] = set()
 
@@ -395,7 +406,7 @@ class DriverProfilesViewModel(QObject):
         return wins_a, wins_b
 
 
-def _main(): 
+def _main():
     vm_test = DriverProfilesViewModel()
     data = vm_test.get_driver_codes()
     print(data)

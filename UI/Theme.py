@@ -5,6 +5,7 @@ from pathlib import Path
 # find the path based off of clues
 fontPath = Path(__file__).parent / "fonts" / "Noto_Sans" / "NotoSansVariableFont.ttf"
 
+
 @dataclass
 class Fonts:
     fontFamily = "Sans Serif"
@@ -13,8 +14,7 @@ class Fonts:
     text: int = 12
 
     def qfont(self, size: int | None = None) -> QFont:
-        """_build a QFont on load_
-        """
+        """_build a QFont on load_"""
         return QFont(self.family, size or self.text)
 
 
@@ -37,9 +37,9 @@ class DayTheme:
     redColor: str = "\033[91m"
 
 
-
 theme = DayTheme()
 fontStyles = Fonts()
+
 
 def loadFonts() -> None:
     "_build the font after QApplication loads within main_"

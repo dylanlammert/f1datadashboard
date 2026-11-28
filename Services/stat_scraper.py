@@ -73,7 +73,7 @@ class DriverStatScraper:
         """
         if not self.connectivityViewModel.isOnline:
             return None
-        
+
         img_url = self._fetch_driver_image_url(soup)
         if not img_url:
             return None
@@ -127,7 +127,7 @@ class DriverStatScraper:
         """
         if not self.connectivityViewModel.isOnline:
             return "Biography Not Available."
-        
+
         bio_heading = soup.find(
             lambda tag: (
                 tag.name in ["h2", "h3", "h4", "p"]
@@ -145,7 +145,7 @@ class DriverStatScraper:
 
         if container is None:
             return "Biography Not Available."
-        
+
         paragraphs = container.find_all("p")
 
         bio_text = "\n\n".join(

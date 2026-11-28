@@ -1,6 +1,5 @@
 import os
 import sqlite3
-import csv
 
 import fastf1
 import pandas as pd
@@ -268,7 +267,9 @@ class DBhandler:
             )
         ]
         for table in tables:
-            existing = {r[1].casefold() for r in cur.execute(f"PRAGMA table_info({table})")}
+            existing = {
+                r[1].casefold() for r in cur.execute(f"PRAGMA table_info({table})")
+            }
             for _, name, colType, notNull, default, _ in reference.execute(
                 f"PRAGMA table_info({table})"
             ):
@@ -1047,9 +1048,7 @@ class DBhandler:
         ).fetchone()
         return None if row is None or row[0] is None else float(row[0])
 
-    def getRaceMarkerTimes(
-        self, session_id: int
-    ) -> tuple[float | None, float | None]:
+    def getRaceMarkerTimes(self, session_id: int) -> tuple[float | None, float | None]:
         row = self.conn.execute(
             """
             SELECT MIN(CASE WHEN lap_number = 1 THEN lap_start_time END),
@@ -1156,7 +1155,13 @@ class DBhandler:
 
     # NOTE: Updated 10/27 current working area
     # NOTE: Current implementation is a little convoluted meant to reduce the # of times searching the db
-    def getLapsDataBlock(self, attributeList: list, sessionID: int, lastLoadedLap: int = 0, blockSize: int = 10) -> tuple[list[dict], int, bool]:
+    def getLapsDataBlock(
+        self,
+        attributeList: list,
+        sessionID: int,
+        lastLoadedLap: int = 0,
+        blockSize: int = 10,
+    ) -> tuple[list[dict], int, bool]:
         """_summary_
 
         Args:
@@ -1207,9 +1212,15 @@ class DBhandler:
         # return formatted rows and the endflag status
         return rows, currentLoadedLap, endFlag
 
-    # NOTE: will need to show a different line on the playcontrols to show how close the data is to being loaded 
+    # NOTE: will need to show a different line on the playcontrols to show how close the data is to being loaded
     # NOTE: current implementation is a little convoluted but meant to reduce the # of times searching db
-    def getTelemetryDataBlock(self, attributeList: list, lastLoadedTime: float = 0.00, blockSize: int = 10, sessionID: int = 0) -> tuple[list[dict], float, bool]:
+    def getTelemetryDataBlock(
+        self,
+        attributeList: list,
+        lastLoadedTime: float = 0.00,
+        blockSize: int = 10,
+        sessionID: int = 0,
+    ) -> tuple[list[dict], float, bool]:
         """_This function grabs blocks from the telemetry table until desired data is downloaded,
             this is intended to be threaded to allow users to start playback as soon as possible._
 
@@ -1240,7 +1251,9 @@ class DBhandler:
             f"ORDER BY session_time, driver_code "
         )
         # The blockSize + 1 is to check if there is another row after current time won't always be formatted right there is about a .3 gap in between each row
-        cursor.execute(dbQuery, (sessionID, lastLoadedTime, lastLoadedTime + blockSize + 1))
+        cursor.execute(
+            dbQuery, (sessionID, lastLoadedTime, lastLoadedTime + blockSize + 1)
+        )
         results = cursor.fetchall()
 
         # format the results into a list of dicts
@@ -1273,8 +1286,8 @@ class DBhandler:
             if hasLaterRows:
                 currentLoadedTime = lastLoadedTime + blockSize
         else:
-            #trim the last index from results
-            rows = rows[: -1]
+            # trim the last index from results
+            rows = rows[:-1]
 
         return rows, currentLoadedTime, endFlag
 
@@ -1537,7 +1550,7 @@ class DBhandler:
             for code, c in rows
         ]
 
-    def getDriverName(self, driverCode:str, sessionID: int) -> str:
+    def getDriverName(self, driverCode: str, sessionID: int) -> str:
         """
         _simple function that returns the full name of a driver refrenced by the driverCode and sessionID_
         """
@@ -1550,6 +1563,7 @@ class DBhandler:
             (driverCode, sessionID),
         ).fetchone()
         return name
+
 
 def main():
     dbHandler = DBhandler()

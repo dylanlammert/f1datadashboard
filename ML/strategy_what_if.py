@@ -1,4 +1,3 @@
-
 """Historical pit strategy what-if comparisons for Ghost Racer."""
 
 from functools import lru_cache
@@ -18,7 +17,6 @@ from ML.pit_window import (
 )
 
 
-
 def get_supported_compounds(
     session_id: int,
     db_path: str = DB_PATH,
@@ -34,11 +32,7 @@ def get_supported_compounds(
 
     model = TyreModel().fit(clean_stint_laps(laps))
 
-    return tuple(
-        compound
-        for compound in DRY_COMPOUNDS
-        if compound in model.compounds
-    )
+    return tuple(compound for compound in DRY_COMPOUNDS if compound in model.compounds)
 
 
 def compare_pit_strategies(
@@ -67,10 +61,7 @@ def compare_pit_strategies(
     if laps.attrs.get("any_rainfall"):
         raise ValueError("The simulator supports dry races only.")
 
-    selected = laps[
-        (laps["driver"] == driver)
-        & (laps["lap_number"] == current_lap)
-    ]
+    selected = laps[(laps["driver"] == driver) & (laps["lap_number"] == current_lap)]
 
     if selected.empty:
         raise ValueError("Driver or current lap is unavailable.")
@@ -90,8 +81,7 @@ def compare_pit_strategies(
 
     if not current_lap < custom_pit_lap < total_laps:
         raise ValueError(
-            "Custom pit lap must be after the current lap "
-            "and before the final lap."
+            "Custom pit lap must be after the current lap and before the final lap."
         )
 
     model = TyreModel().fit(clean_stint_laps(laps))
@@ -101,17 +91,17 @@ def compare_pit_strategies(
         raise ValueError("Not enough data for the current tyre compound.")
 
     if custom_compound not in compounds:
-        raise ValueError(
-            f"Not enough data to simulate {custom_compound} tyres."
-        )
+        raise ValueError(f"Not enough data to simulate {custom_compound} tyres.")
 
     pit_loss = estimate_pit_loss(laps)
 
     previous = set(
-        laps[
-            (laps["driver"] == driver)
-            & (laps["lap_number"] <= current_lap)
-        ]["compound"].dropna().astype(str).str.upper()
+        laps[(laps["driver"] == driver) & (laps["lap_number"] <= current_lap)][
+            "compound"
+        ]
+        .dropna()
+        .astype(str)
+        .str.upper()
     )
 
     used_two_compounds = len(previous & set(DRY_COMPOUNDS)) >= 2
@@ -122,9 +112,7 @@ def compare_pit_strategies(
         if n == 0:
             return (0.0, ()) if rule_satisfied else (inf, ())
 
-        curve = np.cumsum(
-            model.lap_cost(compound, age + np.arange(1, n + 1))
-        )
+        curve = np.cumsum(model.lap_cost(compound, age + np.arange(1, n + 1)))
 
         best_cost = float(curve[-1]) if rule_satisfied else inf
         best_plan = ()
@@ -136,10 +124,7 @@ def compare_pit_strategies(
             before_stop = float(curve[k - 1])
 
             for next_compound in compounds:
-                next_rule = (
-                    rule_satisfied
-                    or next_compound != current_compound
-                )
+                next_rule = rule_satisfied or next_compound != current_compound
 
                 later_cost, later_plan = optimize(
                     n - k,
@@ -154,8 +139,7 @@ def compare_pit_strategies(
                 if cost < best_cost:
                     best_cost = cost
                     best_plan = ((k, next_compound),) + tuple(
-                        (k + offset, name)
-                        for offset, name in later_plan
+                        (k + offset, name) for offset, name in later_plan
                     )
 
         return best_cost, best_plan
@@ -193,13 +177,10 @@ def compare_pit_strategies(
         raise ValueError("No valid baseline strategy was found.")
 
     if not np.isfinite(custom_cost):
-        raise ValueError(
-            "No valid custom strategy satisfies the tyre rules."
-        )
+        raise ValueError("No valid custom strategy satisfies the tyre rules.")
 
     custom_steps = ((k, custom_compound),) + tuple(
-        (k + offset, name)
-        for offset, name in later_steps
+        (k + offset, name) for offset, name in later_steps
     )
 
     def format_plan(steps):
@@ -222,9 +203,7 @@ def compare_pit_strategies(
         "custom_plan": format_plan(custom_steps),
         "baseline_model_cost": round(baseline_cost, 2),
         "custom_model_cost": round(custom_cost, 2),
-        "estimated_extra_seconds": round(
-            max(0.0, custom_cost - baseline_cost), 2
-        ),
+        "estimated_extra_seconds": round(max(0.0, custom_cost - baseline_cost), 2),
         "pit_loss_seconds": round(pit_loss, 2),
         "description": (
             "Historical simulation using race-wide tyre wear "

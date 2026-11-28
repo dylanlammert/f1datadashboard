@@ -1,9 +1,14 @@
-
 """Interactive historical race strategy What-If Simulator."""
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QComboBox, QSpinBox, QPushButton, QPlainTextEdit,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QLabel,
+    QComboBox,
+    QSpinBox,
+    QPushButton,
+    QPlainTextEdit,
 )
 
 from ML.pit_window import load_race_laps
@@ -152,21 +157,13 @@ class AIWhatIfPanel(QWidget):
         self.previous_driver.clicked.connect(
             lambda: self._cycle(self.driver_picker, -1)
         )
-        self.next_driver.clicked.connect(
-            lambda: self._cycle(self.driver_picker, 1)
-        )
+        self.next_driver.clicked.connect(lambda: self._cycle(self.driver_picker, 1))
         self.previous_compound.clicked.connect(
             lambda: self._cycle(self.compound_picker, -1)
         )
-        self.next_compound.clicked.connect(
-            lambda: self._cycle(self.compound_picker, 1)
-        )
-        self.driver_picker.currentTextChanged.connect(
-            self._update_driver
-        )
-        self.current_lap.valueChanged.connect(
-            self._update_pit_range
-        )
+        self.next_compound.clicked.connect(lambda: self._cycle(self.compound_picker, 1))
+        self.driver_picker.currentTextChanged.connect(self._update_driver)
+        self.current_lap.valueChanged.connect(self._update_pit_range)
         self.compare_button.clicked.connect(self.compare)
 
         self.set_session(session_id)
@@ -174,9 +171,7 @@ class AIWhatIfPanel(QWidget):
     def _cycle(self, picker, direction):
         count = picker.count()
         if count:
-            picker.setCurrentIndex(
-                (picker.currentIndex() + direction) % count
-            )
+            picker.setCurrentIndex((picker.currentIndex() + direction) % count)
 
     def set_session(self, session_id):
         """Load drivers and available compounds for a race."""
@@ -196,22 +191,16 @@ class AIWhatIfPanel(QWidget):
             compounds = get_supported_compounds(self.session_id)
 
             if not compounds:
-                raise ValueError(
-                    "No supported dry tyre compounds for this race."
-                )
+                raise ValueError("No supported dry tyre compounds for this race.")
 
             self.laps = laps
             self.total_laps = int(laps["total_laps"].iloc[0])
-            drivers = sorted(
-                laps["driver"].dropna().astype(str).unique()
-            )
+            drivers = sorted(laps["driver"].dropna().astype(str).unique())
 
             self.compound_picker.addItems(list(compounds))
             self.driver_picker.addItems(drivers)
 
-            self.compare_button.setEnabled(
-                bool(drivers) and self.total_laps > 2
-            )
+            self.compare_button.setEnabled(bool(drivers) and self.total_laps > 2)
             self._update_driver()
 
             self.results.setPlainText(
@@ -221,9 +210,7 @@ class AIWhatIfPanel(QWidget):
 
         except Exception as exc:
             self.laps = None
-            self.results.setPlainText(
-                f"Unable to load simulator: {exc}"
-            )
+            self.results.setPlainText(f"Unable to load simulator: {exc}")
 
     def _update_driver(self, _text=None):
         if self.laps is None:
@@ -269,8 +256,7 @@ class AIWhatIfPanel(QWidget):
                 if not plan:
                     return "No additional stops"
                 return "\n".join(
-                    f"  Lap {stop['pit_lap']}: {stop['compound']}"
-                    for stop in plan
+                    f"  Lap {stop['pit_lap']}: {stop['compound']}" for stop in plan
                 )
 
             output = (
@@ -293,6 +279,4 @@ class AIWhatIfPanel(QWidget):
             self.results.setPlainText(output)
 
         except Exception as exc:
-            self.results.setPlainText(
-                f"Simulation unavailable: {exc}"
-            )
+            self.results.setPlainText(f"Simulation unavailable: {exc}")

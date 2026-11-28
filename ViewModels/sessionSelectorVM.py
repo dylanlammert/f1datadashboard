@@ -5,6 +5,7 @@ import pandas as pd
 from Services.api_handler import get_schedule_by_year, get_race, GetRaceWorker
 import traceback
 from ViewModels.driverStandingsVM import BlockLoader, BlockLoaderWorkerSignals
+
 """
     
 NOTE:
@@ -38,7 +39,9 @@ class SessionSelectorVM(QObject):
     TODAY = pd.Timestamp.now(tz="UTC").tz_localize(None)
     CURRENT_YEAR = TODAY.year
 
-    def __init__(self, conectivityModel: ConnectivityVM, signals: BlockLoaderWorkerSignals):
+    def __init__(
+        self, conectivityModel: ConnectivityVM, signals: BlockLoaderWorkerSignals
+    ):
         super().__init__()
         self.dbHandler = DBhandler()
         self.signals = signals
@@ -75,39 +78,42 @@ class SessionSelectorVM(QObject):
                 eventName=sessionInfoDict["event_name"],
                 sessionType=sessionInfoDict["session_type"],
             )
-            #self.__updateCurrentSessionID(newSessionID= newSessionID)
+            # self.__updateCurrentSessionID(newSessionID= newSessionID)
             self.__onSessionReady(newSessionID)
         else:
             self.pendingSessionInfo = sessionInfoDict
             # start loading race data from api
-            worker = GetRaceWorker(sessionInfoDict["year"], sessionInfoDict["event_name"])
+            worker = GetRaceWorker(
+                sessionInfoDict["year"], sessionInfoDict["event_name"]
+            )
             # after the race is done downloading start loading needed data into memory
             worker.signal.finished_signal.connect(self.__onDownloadFinished)
             self.thread_pool.start(worker)
-            #newSessionID = self.__createSessionInstance(self.__updateCurrentSessionID)
+            # newSessionID = self.__createSessionInstance(self.__updateCurrentSessionID)
 
     def __onDownloadFinished(self):
         info = self.pendingSessionInfo
 
         sessionID = self.dbHandler.getSessionID(
-            tableName= "sessions",
-            year = info["year"],
-            eventName= info["event_name"],
-            sessionType= info["session_type"],
+            tableName="sessions",
+            year=info["year"],
+            eventName=info["event_name"],
+            sessionType=info["session_type"],
         )
         self.__onSessionReady(sessionID)
 
     def __onSessionReady(self, sessionID: int):
-        self.__updateCurrentSessionID(newSessionID= sessionID)
+        self.__updateCurrentSessionID(newSessionID=sessionID)
         # need to clear all of the previously stored data
         # start the worker
-        dataLoaderWorker = BlockLoader(sessionID= self.currentSessionID, signals= self.signals)
+        dataLoaderWorker = BlockLoader(
+            sessionID=self.currentSessionID, signals=self.signals
+        )
         dataLoaderWorker.signals.currentAvailablePlaybackChanged.connect(
             self.__currentAvailablePlaybackChanged.emit
         )
         self.__currentAvailablePlaybackChanged.emit(0.0)
         self.thread_pool.start(dataLoaderWorker)
-        
 
     def __updateCurrentSessionID(self, newSessionID):
         self.currentSessionID = newSessionID
